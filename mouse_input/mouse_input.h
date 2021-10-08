@@ -38,13 +38,22 @@ extern "C" {
 	//-----------------------------------------------------------------------------
 	// Defines.
 	//-----------------------------------------------------------------------------
-#define INPUTS_COUNT 2
+#define INPUT_COUNT 6
 #define MOUSE_X_INPUT_INDEX 0
 #define MOUSE_Y_INPUT_INDEX 1
+#define MOUSE_NOISY_X_INPUT_INDEX 2
+#define MOUSE_NOISY_Y_INPUT_INDEX 3
+#define MOUSE_X_KALMAN_INPUT_INDEX 4
+#define MOUSE_Y_KALMAN_INPUT_INDEX 5
 #define INPUT_NAME_STRING "MOUSE"
 #define INPUT_DESCRIPTION_STRINGS \
-	"Mouse X position in pixel(s)", \
-  "Mouse Y position in pixel(s)"
+"Mouse X position in pixel(s)", \
+"Mouse Y position in pixel(s)", \
+"Mouse noisy X position in pixel(s)", \
+"Mouse noisy Y position in pixel(s)", \
+"Mouse X position Kalman predicted value in pixel(s)", \
+"Mouse Y position Kalman predicted value in pixel(s)"
+
 #define INPUT_TYPES \
 	ULL_COUNTER
 

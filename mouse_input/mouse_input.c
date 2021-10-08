@@ -24,6 +24,7 @@
 //-----------------------------------------------------------------------------
 #include <assert.h>
 #include "incrementing_input.h"
+#include "service.h"
 
 //-----------------------------------------------------------------------------
 
@@ -32,6 +33,10 @@
 //-----------------------------------------------------------------------------
 unsigned long long int mouse_x = 0;
 unsigned long long int mouse_y = 0;
+unsigned long long int noisy_mouse_x = 0;
+unsigned long long int noisy_mouse_y = 0;
+KALMAN_STATE kalman_state_x = { 0 };
+KALMAN_STATE kalman_state_y = { 0 };
 
 /*-----------------------------------------------------------------------------
 Function: modeler_init_inputs
@@ -48,26 +53,71 @@ ESRV_API ESRV_STATUS modeler_init_inputs(
 	size_t so
 ) {
 
-	//-------------------------------------------------------------------------
+	ESRV_STATUS ret = ESRV_FAILURE;
 
-	//-------------------------------------------------------------------------
-	// Exception handling section begin.
-	//-------------------------------------------------------------------------
-	INPUT_BEGIN_EXCEPTIONS_HANDLING
-
-		assert(p != NULL);
+	assert(p != NULL);
 	assert(pfd != NULL);
 	assert(pfe != NULL);
 
-	SET_INPUTS_COUNT(INPUTS_COUNT);
+	if (
+		(po != NULL) &&
+		(*po != '\0')
+	) {
+
+		ret = kalman_1d_parse_options(
+			&kalman_state_x,
+			po
+		);
+		if (ret != ESRV_SUCCESS) {
+			goto modeler_init_inputs_error;
+		}
+
+		kalman_state_y.kalman_gain = kalman_state_x.kalman_gain;
+
+		kalman_state_y.measurement_noise_covariance =
+			kalman_state_x.measurement_noise_covariance;
+
+		kalman_state_y.noise_covariance =
+			kalman_state_x.noise_covariance;
+
+		kalman_state_y.predicted_value =
+			kalman_state_x.predicted_value;
+
+		kalman_state_y.prediction_error_covariance =
+			kalman_state_x.prediction_error_covariance;
+
+		ret = kalman_1d_init(
+			&kalman_state_x,
+			INITIAL_NOISE_COVARIANCE,
+			INITIAL_MEASUREMENT_NOISE_COVARIANCE,
+			INITIAL_PREDICTED_VALUE,
+			INITIAL_PREDICTION_ERROR_COVARIANCE,
+			INITIAL_KALMAN_GAIN
+		);
+		if (ret != ESRV_SUCCESS) {
+			goto modeler_init_inputs_error;
+		}
+
+		ret = kalman_1d_init(
+			&kalman_state_y,
+			INITIAL_NOISE_COVARIANCE,
+			INITIAL_MEASUREMENT_NOISE_COVARIANCE,
+			INITIAL_PREDICTED_VALUE,
+			INITIAL_PREDICTION_ERROR_COVARIANCE,
+			INITIAL_KALMAN_GAIN
+		);
+		if (ret != ESRV_SUCCESS) {
+			goto modeler_init_inputs_error;
+		}
+	}
+
+	srand((unsigned)time(NULL));
+	
+	SET_INPUTS_COUNT(INPUT_COUNT);
 
 	return(ESRV_SUCCESS);
-
-	//-------------------------------------------------------------------------
-	// Exception handling section end.
-	//-------------------------------------------------------------------------
-	INPUT_END_EXCEPTIONS_HANDLING(NULL)
-
+modeler_init_inputs_error:
+	return(ESRV_FAILURE);
 }
 
 /*-----------------------------------------------------------------------------
@@ -87,11 +137,8 @@ ESRV_API ESRV_STATUS modeler_open_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	//-------------------------------------------------------------------------
 	// Input descriptions.
 	//-------------------------------------------------------------------------
-	static char* descriptions[INPUTS_COUNT] = {
+	static char* descriptions[INPUT_COUNT] = {
 		INPUT_DESCRIPTION_STRINGS
-	};
-	static INTEL_MODELER_INPUT_TYPES types[INPUTS_COUNT] = {
-		INPUT_TYPES
 	};
 
 	//-------------------------------------------------------------------------
@@ -100,7 +147,6 @@ ESRV_API ESRV_STATUS modeler_open_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	// Exception handling section begin.
 	//-------------------------------------------------------------------------
 	INPUT_BEGIN_EXCEPTIONS_HANDLING
-
 		assert(p != NULL);
 
 	//-------------------------------------------------------------------------
@@ -108,24 +154,16 @@ ESRV_API ESRV_STATUS modeler_open_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	//-------------------------------------------------------------------------
 	SET_INPUTS_NAME(INPUT_NAME_STRING);
 	//-------------------------------------------------------------------------
-	SET_INPUT_DESCRIPTION(
-		MOUSE_X_INPUT_INDEX,
-		descriptions[MOUSE_X_INPUT_INDEX]
-	);
-	SET_INPUT_TYPE(
-		MOUSE_X_INPUT_INDEX,
-		ULL_COUNTER
-	);
-	//-------------------------------------------------------------------------
-	SET_INPUT_DESCRIPTION(
-		MOUSE_Y_INPUT_INDEX,
-		descriptions[MOUSE_Y_INPUT_INDEX]
-	);
-
-	SET_INPUT_TYPE(
-		MOUSE_Y_INPUT_INDEX,
-		ULL_COUNTER
-	);
+	for (i = 0; i < INPUT_COUNT; i++) {
+		SET_INPUT_DESCRIPTION(
+			i, 
+			descriptions[i]
+		);
+		SET_INPUT_TYPE(
+			i,
+			ULL_COUNTER
+		);
+	}
 
 	return(ESRV_SUCCESS);
 
@@ -133,7 +171,6 @@ ESRV_API ESRV_STATUS modeler_open_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	// Exception handling section end.
 	//-------------------------------------------------------------------------
 	INPUT_END_EXCEPTIONS_HANDLING(p)
-
 }
 
 /*-----------------------------------------------------------------------------
@@ -186,8 +223,10 @@ extern ESRV_STATUS modeler_read_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	//-------------------------------------------------------------------------
 	BOOL bret = FALSE;
 	POINT point = { 0 };
-
-	assert(p != null);
+	int noise_x = 0;
+	int noise_y = 0;
+	int integer_value = 0;
+	ESRV_STATUS ret = ESRV_FAILURE;
 
 	//-------------------------------------------------------------------------
 	// Get cursor position.
@@ -203,10 +242,40 @@ extern ESRV_STATUS modeler_read_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	//-------------------------------------------------------------------------
 	// Set input values.
 	//-------------------------------------------------------------------------
-	SET_INPUT_ULL_VALUE(
-		MOUSE_X_INPUT_INDEX,
-		mouse_x
+	noise_x = GET_SOME_NOISE;
+	noise_y = GET_SOME_NOISE;
+
+	integer_value = (int)mouse_x + noise_x;
+
+	if (integer_value > 0) {
+		noisy_mouse_x = integer_value;
+	}
+	else {
+		noisy_mouse_x = mouse_x;
+	}
+	integer_value = (int)mouse_y + noise_y;
+	if (integer_value > 0) {
+		noisy_mouse_y = integer_value;
+	}
+	else {
+		noisy_mouse_y = mouse_y;
+	}
+
+	ret = kalman_1d_init(
+		&kalman_state_x,
+		(double)noisy_mouse_x
 	);
+	if (ret != ESRV_SUCCESS) {
+		goto modeler_read_inputs_error;
+	}
+
+	ret = kalman_1d_init(
+		&kalman_state_y,
+		(double)noisy_mouse_y
+	);
+	if (ret != ESRV_SUCCESS) {
+		goto modeler_read_inputs_error;
+	}
 
 	SET_INPUT_ULL_VALUE(
 		MOUSE_X_INPUT_INDEX,
@@ -214,15 +283,35 @@ extern ESRV_STATUS modeler_read_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	);
 
 	SET_INPUT_ULL_VALUE(
-		MOUSE_Y_INPUT_INDEX,
+		MOUSE_X_INPUT_INDEX,
 		mouse_y
+	);
+
+	SET_INPUT_ULL_VALUE(
+		MOUSE_NOISY_X_INPUT_INDEX,
+		noisy_mouse_x
+	);
+
+	SET_INPUT_ULL_VALUE(
+		MOUSE_NOISY_Y_INPUT_INDEX,
+		noisy_mouse_y
+	);
+
+	SET_INPUT_ULL_VALUE(
+		MOUSE_X_KALMAN_INPUT_INDEX,
+		(unsigned long long int)kalman_state_x.predicted_value
+	);
+
+	SET_INPUT_ULL_VALUE(
+		MOUSE_Y_KALMAN_INPUT_INDEX,
+		(unsigned long long int)kalman_state_y.predicted_value
 	);
 
 	return(ESRV_SUCCESS);
 modeler_read_inputs_error:
 	return(ESRV_FAILURE);
 
-	//-------------------------------------------------------------------------
+//-------------------------------------------------------------------------
 // Exception handling section end.
 //-------------------------------------------------------------------------
 	INPUT_END_EXCEPTIONS_HANDLING(p)
