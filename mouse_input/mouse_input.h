@@ -57,6 +57,14 @@ extern "C" {
 #define INPUT_TYPES \
 	ULL_COUNTER
 
+#define GET_SOME_NOISE \
+(int) ( \
+(double)rand() / \
+(RAND_MAX + 1) * \
+(MOUSE_NOISE_RANGE_MAX - MOUSE_NOISE_RANGE_MIN) + \
+MOUSE_NOISE_RANGE_MIN \
+)
+
 //-----------------------------------------------------------------------------
 // Function prototypes.
 //-----------------------------------------------------------------------------

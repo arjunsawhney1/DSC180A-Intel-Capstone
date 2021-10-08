@@ -25,6 +25,7 @@
 #include <assert.h>
 #include "incrementing_input.h"
 #include "service.h"
+#include "kalman.h"
 
 //-----------------------------------------------------------------------------
 
@@ -66,7 +67,8 @@ ESRV_API ESRV_STATUS modeler_init_inputs(
 
 		ret = kalman_1d_parse_options(
 			&kalman_state_x,
-			po
+			po,
+			so
 		);
 		if (ret != ESRV_SUCCESS) {
 			goto modeler_init_inputs_error;
@@ -261,7 +263,7 @@ extern ESRV_STATUS modeler_read_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 		noisy_mouse_y = mouse_y;
 	}
 
-	ret = kalman_1d_init(
+	ret = kalman_1d(
 		&kalman_state_x,
 		(double)noisy_mouse_x
 	);
@@ -269,7 +271,7 @@ extern ESRV_STATUS modeler_read_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 		goto modeler_read_inputs_error;
 	}
 
-	ret = kalman_1d_init(
+	ret = kalman_1d(
 		&kalman_state_y,
 		(double)noisy_mouse_y
 	);
@@ -283,7 +285,7 @@ extern ESRV_STATUS modeler_read_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	);
 
 	SET_INPUT_ULL_VALUE(
-		MOUSE_X_INPUT_INDEX,
+		MOUSE_Y_INPUT_INDEX,
 		mouse_y
 	);
 
