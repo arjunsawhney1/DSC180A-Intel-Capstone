@@ -25,7 +25,7 @@
 #include <assert.h>
 #include <windows.h>
 #include <process.h> // for _beginthreadex
-#include "static_pure_event_driven_input.h"
+#include "user_wait.h"
 
 //-----------------------------------------------------------------------------
 // Custom event-listener thread data.
@@ -35,6 +35,7 @@ HANDLE h_thread = NULL;
 HANDLE h_1 = NULL, h_2 = NULL, h_3 = NULL, h_4 = NULL, h_5 = NULL, h_6 = NULL, 
 h_7 = NULL, h_8 = NULL, h_9 = NULL, h_10 = NULL, h_11 = NULL, h_12 = NULL, 
 h_13 = NULL, h_14 = NULL, h_15 = NULL, h_16;
+HANDLE handles[16];
 CURSORINFO c = { 0 };
 
 //-----------------------------------------------------------------------------
@@ -116,6 +117,33 @@ ESRV_API ESRV_STATUS modeler_open_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	//-------------------------------------------------------------------------
 	// Start the pure event-driven thread.
 	//-------------------------------------------------------------------------
+	
+	/*can either use upper case L at start of double quotes
+		or use tchar.h 
+		#define STRING "My string"
+		f(STRING);
+		if expecting wide: f2(_T(STRING));
+	*/
+
+	// Some foreground windows are not encoded as ASCII -- hint for next proj
+	// Handle Multi-byte chars
+	handles[0] = LoadCursorA(NULL, IDC_APPSTARTING);
+	handles[1] = LoadCursorA(NULL, IDC_ARROW);
+	handles[2] = LoadCursorA(NULL, IDC_CROSS);
+	handles[3] = LoadCursorA(NULL, IDC_HAND);
+	handles[4] = LoadCursorA(NULL, IDC_HELP);
+	handles[5] = LoadCursorA(NULL, IDC_IBEAM);
+	handles[6] = LoadCursorA(NULL, IDC_ICON);
+	handles[7] = LoadCursorA(NULL, IDC_NO);
+	handles[8] = LoadCursorA(NULL, IDC_SIZE);
+	handles[9] = LoadCursorA(NULL, IDC_SIZEALL);
+	handles[10] = LoadCursorA(NULL, IDC_SIZENESW);
+	handles[11] = LoadCursorA(NULL, IDC_SIZENS);
+	handles[12] = LoadCursorA(NULL, IDC_SIZENWSE);
+	handles[13] = LoadCursorA(NULL, IDC_SIZEWE);
+	handles[14] = LoadCursorA(NULL, IDC_UPARROW);
+	handles[15] = LoadCursorA(NULL, IDC_WAIT);
+
 	h_thread = (HANDLE)_beginthreadex(
 		NULL,
 		0,
@@ -153,7 +181,6 @@ ESRV_API ESRV_STATUS modeler_open_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 modeler_open_inputs_error:
 
 	return(ESRV_FAILURE);
-
 }
 
 /*-----------------------------------------------------------------------------
@@ -172,28 +199,17 @@ ESRV_API ESRV_STATUS modeler_close_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 
 	assert(p != NULL);
 
-//# check if thread is still running
-//# do not need stop event
-//# create global event in open
-//# when you exit the thread, you set that event
-//# wait on that event  in close (say 5 seconds)
-//# check state of thread knowing the handle (this is better than)
-//# can also wait on the handle of the thread, already have it
-//# if thread is still running, use a macro which terminates the thread
-//# read MS documentation -- do not terminate thread because of leak
-//# good practice to have it in case of unexpected cases
-
 	/* local variable definition */
 	int a = 0;
 
-	/* do loop execution */
-	// in do loop:
-	//	GetExitCodeThread() -- to check which state a thread is in
-	//	limit number of checks, give it some time
-
 	do {
+		// do a short wait -- maybe 200ms
+		// count how many times you waited -- maybe 10 times
+		// if over 10 times, return ESRV failure
+
+		// use custom events (not necessary in this project)
 		a = a + 1;
-	} while (GetExitCodeThread(h_thread, 0) != 0 && a < 5);
+	} while (GetExitCodeThread(h_thread, 0) == 0 && a < 5);
 
 	return(ESRV_SUCCESS);
 
@@ -370,23 +386,6 @@ ESRV_API unsigned int __stdcall custom_event_listner_thread(void *px) {
 		custom_event_listner_thread_exit
 	);
 
-	h_1 = LoadCursorA(NULL, IDC_APPSTARTING);
-	h_2 = LoadCursorA(NULL, IDC_ARROW);
-	h_3 = LoadCursorA(NULL, IDC_CROSS);
-	h_4 = LoadCursorA(NULL, IDC_HAND);
-	h_5 = LoadCursorA(NULL, IDC_HELP);
-	h_6 = LoadCursorA(NULL, IDC_IBEAM);
-	h_7 = LoadCursorA(NULL, IDC_ICON);
-	h_8 = LoadCursorA(NULL, IDC_NO);
-	h_9 = LoadCursorA(NULL, IDC_SIZE);
-	h_10 = LoadCursorA(NULL, IDC_SIZEALL);
-	h_11 = LoadCursorA(NULL, IDC_SIZENESW);
-	h_12 = LoadCursorA(NULL, IDC_SIZENS);
-	h_13 = LoadCursorA(NULL, IDC_SIZENWSE);
-	h_14 = LoadCursorA(NULL, IDC_SIZEWE);
-	h_15 = LoadCursorA(NULL, IDC_UPARROW);
-	h_16 = LoadCursorA(NULL, IDC_WAIT);
-
 	while(STOP_REQUEST == 0) {
 		//---------------------------------------------------------------------
 			// Pause to simulate event triggering.
@@ -406,70 +405,14 @@ ESRV_API unsigned int __stdcall custom_event_listner_thread(void *px) {
 			goto custom_event_listner_thread_exit; // time to leave!
 			break;
 		case WAIT_TIMEOUT:
-
-//# think about the private data: which cursor have we seen?
-//# macros to set private data
-//# monitoring 3 different mouse inputs OR only one input and use private data
-
-//example: count of how many times we see appstart cursor
-//example: which window was in the foreground?
-//we want a single signal in the time series, could be a binary flag
-//can log a binary flag -- which cursor? 0 is app start, 1 is waiting, 2 is hand, etc.
-//what is the minimum data I may need for this waiting issue
-//example: mark when state of icon changes
-//example: can mark cursor change only when loading for more than x seconds
-//could bring some of that computation inside the input library 
-			
 			c.cbSize = sizeof(c);
 			GetCursorInfo(&c);
 
-			if (c.hCursor == h_1) {
-				icon = 0;
-			} 
-			else if (c.hCursor == h_2) {
-				icon = 1;
-			}
-			else if (c.hCursor == h_3) {
-				icon = 2;
-			}
-			else if (c.hCursor == h_4) {
-				icon = 3;
-			}
-			else if (c.hCursor == h_5) {
-				icon = 4;
-			}
-			else if (c.hCursor == h_6) {
-				icon = 5;
-			}
-			else if (c.hCursor == h_7) {
-				icon = 6;
-			}
-			else if (c.hCursor == h_8) {
-				icon = 7;
-			}
-			else if (c.hCursor == h_9) {
-				icon = 8;
-			}
-			else if (c.hCursor == h_10) {
-				icon = 9;
-			}
-			else if (c.hCursor == h_11) {
-				icon = 10;
-			}
-			else if (c.hCursor == h_12) {
-				icon = 11;
-			}
-			else if (c.hCursor == h_13) {
-				icon = 12;
-			}
-			else if (c.hCursor == h_14) {
-				icon = 13;
-			}
-			else if (c.hCursor == h_15) {
-				icon = 14;
-			}
-			else if (c.hCursor == h_16) {
-				icon = 15;
+			for (int i = 0; i < sizeof(handles)/sizeof(handles[0]); i = i + 1) {
+				if (c.hCursor == handles[i]) {
+					icon = i;
+					break; 
+				}
 			}
 
 			break; // all good, time to make a measurement
@@ -492,9 +435,6 @@ ESRV_API unsigned int __stdcall custom_event_listner_thread(void *px) {
 		);
 	} // while
 
-custom_event_listner_thread_exit:
-	return(ESRV_FAILURE);
-
 	//-------------------------------------------------------------------------
 	// Un-register this thread with watchdog.
 	//-------------------------------------------------------------------------
@@ -503,6 +443,9 @@ custom_event_listner_thread_exit:
 		h_thread,
 		thread_id
 	);
+
+custom_event_listner_thread_exit:
+	return(ESRV_FAILURE);
 
 	return(ESRV_SUCCESS);
 
