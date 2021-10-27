@@ -32,10 +32,14 @@
 //-----------------------------------------------------------------------------
 DWORD thread_id = 0;
 HANDLE h_thread = NULL;
-HANDLE h_1 = NULL, h_2 = NULL, h_3 = NULL, h_4 = NULL, h_5 = NULL, h_6 = NULL, 
-h_7 = NULL, h_8 = NULL, h_9 = NULL, h_10 = NULL, h_11 = NULL, h_12 = NULL, 
-h_13 = NULL, h_14 = NULL, h_15 = NULL, h_16;
 HANDLE handles[16];
+/*can either use upper case L at start of double quotes
+	or use tchar.h
+	#define STRING "My string"
+	f(STRING);
+	if expecting wide: f2(_T(STRING));
+*/
+LPCSTR cursors[16] = { (LPCSTR)IDC_APPSTARTING, (LPCSTR)IDC_ARROW, (LPCSTR)IDC_CROSS, (LPCSTR)IDC_HAND, (LPCSTR)IDC_HELP, (LPCSTR)IDC_IBEAM, (LPCSTR)IDC_ICON, (LPCSTR)IDC_NO, (LPCSTR)IDC_SIZE, (LPCSTR)IDC_SIZEALL, (LPCSTR)IDC_SIZENS, (LPCSTR)IDC_SIZENWSE, (LPCSTR)IDC_SIZEWE, (LPCSTR)IDC_UPARROW, (LPCSTR)IDC_WAIT };
 CURSORINFO c = { 0 };
 
 //-----------------------------------------------------------------------------
@@ -117,32 +121,12 @@ ESRV_API ESRV_STATUS modeler_open_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	//-------------------------------------------------------------------------
 	// Start the pure event-driven thread.
 	//-------------------------------------------------------------------------
-	
-	/*can either use upper case L at start of double quotes
-		or use tchar.h 
-		#define STRING "My string"
-		f(STRING);
-		if expecting wide: f2(_T(STRING));
-	*/
-
 	// Some foreground windows are not encoded as ASCII -- hint for next proj
 	// Handle Multi-byte chars
-	handles[0] = LoadCursorA(NULL, IDC_APPSTARTING);
-	handles[1] = LoadCursorA(NULL, IDC_ARROW);
-	handles[2] = LoadCursorA(NULL, IDC_CROSS);
-	handles[3] = LoadCursorA(NULL, IDC_HAND);
-	handles[4] = LoadCursorA(NULL, IDC_HELP);
-	handles[5] = LoadCursorA(NULL, IDC_IBEAM);
-	handles[6] = LoadCursorA(NULL, IDC_ICON);
-	handles[7] = LoadCursorA(NULL, IDC_NO);
-	handles[8] = LoadCursorA(NULL, IDC_SIZE);
-	handles[9] = LoadCursorA(NULL, IDC_SIZEALL);
-	handles[10] = LoadCursorA(NULL, IDC_SIZENESW);
-	handles[11] = LoadCursorA(NULL, IDC_SIZENS);
-	handles[12] = LoadCursorA(NULL, IDC_SIZENWSE);
-	handles[13] = LoadCursorA(NULL, IDC_SIZEWE);
-	handles[14] = LoadCursorA(NULL, IDC_UPARROW);
-	handles[15] = LoadCursorA(NULL, IDC_WAIT);
+
+	for (int i = 0; i < sizeof(handles)/sizeof(handles[0]); i = i + 1) {
+		handles[i] = LoadCursorA(NULL, cursors[i]);
+	}
 
 	h_thread = (HANDLE)_beginthreadex(
 		NULL,
@@ -200,26 +184,22 @@ ESRV_API ESRV_STATUS modeler_close_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	assert(p != NULL);
 
 	/* local variable definition */
-	int a = 0;
+	DWORD exitcode;
 
-	do {
-		// do a short wait -- maybe 200ms
-		// count how many times you waited -- maybe 10 times
-		// if over 10 times, return ESRV failure
-
-		// use custom events (not necessary in this project)
-		a = a + 1;
-	} while (GetExitCodeThread(h_thread, 0) == 0 && a < 5);
+	if (!GetExitCodeThread(h_thread, &exitcode)) {
+		goto modeler_close_inputs_error;
+	}
 
 	return(ESRV_SUCCESS);
+
+modeler_close_inputs_error:
+	return(ESRV_FAILURE);
 
 	//-------------------------------------------------------------------------
 	// Exception handling section end.
 	//-------------------------------------------------------------------------
 	INPUT_END_EXCEPTIONS_HANDLING(p)
 
-//modeler_close_inputs_error:
-//	return(ESRV_FAILURE);
 }
 
 /*-----------------------------------------------------------------------------
@@ -419,12 +399,6 @@ ESRV_API unsigned int __stdcall custom_event_listner_thread(void *px) {
 		default:
 			goto custom_event_listner_thread_exit; // error condition
 		} // switch
-
-		//---------------------------------------------------------------------
-		// Trigger logging.
-		//---------------------------------------------------------------------
-		LOG_INPUT_VALUES;
-
 		//---------------------------------------------------------------------
 		// Set input values.
 		//---------------------------------------------------------------------
@@ -433,6 +407,12 @@ ESRV_API unsigned int __stdcall custom_event_listner_thread(void *px) {
 			INPUT_CURSOR_ICON,
 			icon
 		);
+
+		//---------------------------------------------------------------------
+				// Trigger logging.
+				//---------------------------------------------------------------------
+		LOG_INPUT_VALUES;
+
 	} // while
 
 	//-------------------------------------------------------------------------
