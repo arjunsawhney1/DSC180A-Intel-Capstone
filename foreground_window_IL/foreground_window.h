@@ -36,13 +36,28 @@ extern "C" {
 //-----------------------------------------------------------------------------
 // Defines.
 //-----------------------------------------------------------------------------
-#define INPUT_PAUSE_IN_MS 100 // does not accept floating point
-#define INPUTS_COUNT 1
-	#define INPUT_CURSOR_ICON 0
+#define STRING_BUFFERS_SIZE 1024
+#define INPUT_PAUSE_IN_MS 1000 // does not accept floating point
+#define INPUT_COUNT 3
+	#define INPUT_EXECUTABLE 0
+	#define INPUT_IS_IMMERSIVE 1
+	#define INPUT_IS_HUNG 2
 
-#define INPUT_NAME_STRING "CURSOR-ICON"
-#define INPUT_DESCRIPTION_STRINGS "State of Cursor Icon"
-#define INPUT_TYPES ULL_COUNTER
+#define INPUT_NAME_STRING "FOREGROUND-WINDOW"
+
+#define INPUT_DESCRIPTION_STRINGS \
+	"Foreground Window Name", \
+	"Foreground Window is Immersive", \
+	"Foreground Window is Hung", \
+
+#define INPUT_TYPES \
+	STRING_COUNTER, \
+	ULL_COUNTER, \
+	ULL_COUNTER, \
+
+#define WAIT_EVENTS_COUNT (2)
+	#define STOP_EVENT_INDEX (0)
+	#define CLICK_EVENT_INDEX (1)
 
 //-----------------------------------------------------------------------------
 // Function prototypes.
@@ -61,7 +76,8 @@ ESRV_STATUS modeler_listen_inputs(PINTEL_MODELER_INPUT_TABLE);
 ESRV_STATUS modeler_process_dctl(PINTEL_MODELER_INPUT_TABLE);
 ESRV_STATUS modeler_process_lctl(PINTEL_MODELER_INPUT_TABLE);
 //-----------------------------------------------------------------------------
-ESRV_API unsigned int __stdcall custom_event_listner_thread(void *);
+ESRV_API unsigned int __stdcall custom_foreground_thread(void *);
+ESRV_API unsigned int __stdcall mouse_messages_loop(void*);
 /*--------------------------------------------------------------------------*/
 #ifdef __cplusplus
 }
