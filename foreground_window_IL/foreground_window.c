@@ -123,7 +123,8 @@ ESRV_API ESRV_STATUS modeler_open_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 			i,
 			types[i]
 		);
-	} // for i (each input)
+		//SET_INPUT_AS_NOT_LOGGED(i);
+	} 
 
 	//-------------------------------------------------------------------------
 	// Setup threads and synch data.
@@ -254,13 +255,20 @@ Return  : status.
 ESRV_STATUS modeler_listen_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 
 	//-------------------------------------------------------------------------
+	// Hook thrad variables.
+	//-------------------------------------------------------------------------
+
+	HANDLE h_msg_loop_thread = NULL;
+	DWORD msg_loop_thread_id = 0;
+
+	//-------------------------------------------------------------------------
 
 	//-------------------------------------------------------------------------
 	// Exception handling section begin.
 	//-------------------------------------------------------------------------
 	INPUT_BEGIN_EXCEPTIONS_HANDLING
 
-	assert(p != NULL);
+		assert(p != NULL);
 
 	return(ESRV_SUCCESS);
 
@@ -269,7 +277,52 @@ ESRV_STATUS modeler_listen_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	//-------------------------------------------------------------------------
 	INPUT_END_EXCEPTIONS_HANDLING(p)
 
+		//-------------------------------------------------------------------------
+		h_msg_loop_thread = (HANDLE)_beginthreadex(
+			NULL,
+			0,
+			mouse_messages_loop,
+			NULL,
+			0,
+			(unsigned int*)&msg_loop_thread_id
+		);
+	if (h_msg_loop_thread == NULL) {
+		goto custom_event_listner_thread_exit;
+	}
+	//-------------------------------------------------------------------------
+	// Run the message loop!
+	//-------------------------------------------------------------------------
+	if (h_msg_loop_thread != NULL) {
+		WaitForSingleObject(
+			h_msg_loop_thread,
+			INFINITE
+		);
+	}
+
+custom_event_listner_thread_exit:
+	//-------------------------------------------------------------------------
+	// Free resources.
+	//-------------------------------------------------------------------------
+	if (h_click_detected != NULL) {
+		CloseHandle(h_click_detected);
+		h_click_detected = NULL;
+	}
+	//added from hook_input
+	DeleteCriticalSection(&cs);
+
+	return(ESRV_SUCCESS);
+
+	//-------------------------------------------------------------------------
+	// Exception handling section end.
+	//-------------------------------------------------------------------------
+		//commented out since it created an error: "no decleration"
+
+	/*INPUT_END_EXCEPTIONS_HANDLING(NULL)*/
+
+	printf("THIS listner RUNS -- %s -- %s -- %d  \n", __FILE__, __FUNCTION__, __LINE__);
+
 }
+
 
 /*-----------------------------------------------------------------------------
 Function: modeler_process_dctl
@@ -332,7 +385,7 @@ In      : pointers to the input table (passed as void *).
 Out     : modified input variables and time events list data.
 Return  : status.
 -----------------------------------------------------------------------------*/
-ESRV_API unsigned int __stdcall custom_foreground_thread(void *px) {
+ESRV_API unsigned int __stdcall custom_foreground_thread(void* px) {
 
 	//-------------------------------------------------------------------------
 	// Generic variables.
@@ -347,14 +400,23 @@ ESRV_API unsigned int __stdcall custom_foreground_thread(void *px) {
 	assert(refWindow != NULL);
 	HWND lastWindow = GetForegroundWindow(); // used to check against current 
 	assert(lastWindow != NULL);
-	DWORD ref_pid = GetWindowThreadProcessId(refWindow, &thread_id); // initial process ID
-	assert(ref_pid != NULL);
-	DWORD last_pid = 0; // used to check against current 
+
+	DWORD ref_pid = 0;	// initial pid
+	DWORD last_pid = 0; // used to check against current pid
+
+	// GetWindowThreadProcessID returns a THREAD id, but can use the 2nd param to assign the PROCESS id to the 2nd arg value
+	DWORD current_thread_id = GetWindowThreadProcessId(refWindow, &ref_pid); 
+	assert(current_thrad_id != NULL);
+
 	TCHAR procPath[MAX_PATH];
 	TCHAR* executable = _T("N/A");
 	HANDLE openProc = NULL;
 	BOOL isImmersive = FALSE;
 	BOOL isHung = FALSE;
+
+	// 
+	DWORD test = 0;
+
 
 	//-------------------------------------------------------------------------
 	// Hook thread variables.
@@ -372,18 +434,20 @@ ESRV_API unsigned int __stdcall custom_foreground_thread(void *px) {
 	//-------------------------------------------------------------------------
 	WATCHDOG_VARIABLES
 
-	//-------------------------------------------------------------------------
-	// Access helper variables.
-	//-------------------------------------------------------------------------
-	PINTEL_MODELER_INPUT_TABLE p = NULL;
+		//-------------------------------------------------------------------------
+		// Access helper variables.
+		//-------------------------------------------------------------------------
+		PINTEL_MODELER_INPUT_TABLE p = NULL;
 
 	//-------------------------------------------------------------------------
 	// Exception handling section begin.
 	//-------------------------------------------------------------------------
 	INPUT_BEGIN_EXCEPTIONS_HANDLING
 
-	assert(px != NULL);
+		assert(px != NULL);
 	p = (PINTEL_MODELER_INPUT_TABLE)px;
+
+	// symbols defined by compiler
 
 	//-------------------------------------------------------------------------
 	// Name this thread (for debug mode only).
@@ -420,26 +484,28 @@ ESRV_API unsigned int __stdcall custom_foreground_thread(void *px) {
 		goto custom_foreground_thread_exit;
 	}
 	//-------------------------------------------------------------------------
-	h_msg_loop_thread = (HANDLE)_beginthreadex(
-		NULL,
-		0,
-		mouse_messages_loop,
-		NULL,
-		0,
-		(unsigned int*)&msg_loop_thread_id
-	);
-	if (h_msg_loop_thread == NULL) {
-		goto custom_foreground_thread_exit;
-	}
-	//-------------------------------------------------------------------------
-	// Run the message loop!
-	//-------------------------------------------------------------------------
-	if (h_msg_loop_thread != NULL) {
-		WaitForSingleObject(
-			h_msg_loop_thread,
-			INFINITE
-		);
-	}
+
+
+	//h_msg_loop_thread = (HANDLE)_beginthreadex(
+	//	NULL,
+	//	0,
+	//	mouse_messages_loop,
+	//	NULL,
+	//	0,
+	//	(unsigned int*)&msg_loop_thread_id
+	//);
+	//if (h_msg_loop_thread == NULL) {
+	//	goto custom_foreground_thread_exit;
+	//}
+	////-------------------------------------------------------------------------
+	//// Run the message loop!
+	////-------------------------------------------------------------------------
+	//if (h_msg_loop_thread != NULL) {
+	//	WaitForSingleObject(
+	//		h_msg_loop_thread,
+	//		INFINITE
+	//	);
+	//}
 
 	//-------------------------------------------------------------------------
 	// Setup wait variables.
@@ -449,7 +515,8 @@ ESRV_API unsigned int __stdcall custom_foreground_thread(void *px) {
 	assert(wait_events[STOP_EVENT_INDEX] != NULL);
 	assert(wait_events[CLICK_EVENT_INDEX] != NULL);
 
-	while(STOP_REQUEST == 0) {
+
+	while (STOP_REQUEST == 0) {
 		//---------------------------------------------------------------------
 			// Pause to simulate event triggering.
 			// Note:
@@ -462,59 +529,100 @@ ESRV_API unsigned int __stdcall custom_foreground_thread(void *px) {
 		dwret = WaitForMultipleObjects(
 			WAIT_EVENTS_COUNT,
 			wait_events, // array of handles (events)
-			TRUE, // #not sure how this affects us
+			FALSE, // #checks if we should wait for ALL events or not b4 executing
 			INPUT_PAUSE_IN_MS // 1000ms
 		);
-		switch (dwret) {
+		switch (dwret) { // may need to put an error msg here
 		case WAIT_OBJECT_0:
 			goto custom_foreground_thread_exit; // time to leave!
 			break;
 		case WAIT_TIMEOUT:
-			// get new window
+			// get new window. Maybe no need to call again?
 			lastWindow = GetForegroundWindow();
-			assert(thisWindow != NULL);
-
+			// recommended if statement test
+			if (lastWindow == NULL) { 
+				ERROR;
+			}
 			// get the latest pid (lastWindow's PID)
-			last_pid = GetWindowThreadProcessId(lastWindow, &ref_pid);
+			// Stores the current tid and stores the pid into last_pid
+			current_thread_id = GetWindowThreadProcessId(lastWindow, &last_pid);
+			assert(current_thread_id != NULL);
 			assert(last_pid != NULL);
-
+			// can print f here to find what we get back
 			//check for a change in foreground window
+			printf("ref_pid is %d \n", ref_pid);
+			printf("last_pid is  %d \n", last_pid);
+			printf("current_thread_id is %d \n", current_thread_id);
 			if (ref_pid != last_pid) {
-				// update refWindow and ref_pid
+				// update refWindow 
 				refWindow = lastWindow;
-				ref_pid = last_pid;
+				//need to update re_pid AFTER the operations made below
+				//last_pid = ref_pid;
+				
 
-				// passing in the thread ID to grant access as well as create a process handle
-				openProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, ref_pid);
+				// b4, it seemed like ref_pid was a thread id
+				openProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, last_pid);
+
+				_tprintf(_T("openProc is %p \n "), openProc);
+
 				// in the case where openProc is not null
 				if (openProc) {
+					// arguments WERE wrong since ascii and unicode does not equal
+					// recommended to drop the A (maybe), verify rest of args
+					// recommended to take out LPSTR- which was added to silence warning compiler
+					//test = GetProcessImageFileNameA(openProc, (LPSTR)procPath, MAX_PATH);
+
+					test =  GetProcessImageFileNameA(openProc, executable, MAX_PATH);
+					_tprintf(_T("test is %d , Procpath is = %s \n "), test, executable);
 					// obtaining the path to the process
-					if (GetProcessImageFileNameA(openProc, (LPSTR)procPath, MAX_PATH) > 0) {
+					// if its 0, then there should be an error message (need to implement)
+					if (test > 0) {
+						//recommend to use tchar functions, no need for wcsrchr
+						// search from right to left using a negative indexing, stop at "first" slash
+						// 
+						// use pointers to do so, position pointer at end of str, need len(string), and decrement pointer, remove one, check if / & if pointer is at the beginning or not (to avoid decrementing into empty space) if not then keep decrementing
+						
+
+						//executable = procPath;
 						executable = wcsrchr(procPath, '/');
 					}
 					else {
 						executable = _T("N/A");
 					}
+
+					//might work but need a print f
+					//is never executed?
 					isImmersive = IsImmersiveProcess(openProc);
 					isHung = IsHungAppWindow(refWindow);
 				}
 				// if null, get the error (used for debugging)
 				else {
 					debug = GetLastError();
+					// openProcess is most likely wrong - wrong params
+					printf("OpenProcFailed %d \n", debug);
 				}
+			// update the ref_pid
+			ref_pid = last_pid;
 			}
 			break;
 		default:
 			goto custom_foreground_thread_exit; // error condition
 		} // switch
-		
+
 		//---------------------------------------------------------------------
 		// Set input values.
 		//---------------------------------------------------------------------
+		// might have to comment set_input_unicode in
+		// depends if we defined not logged earlier or not
+
+
+	//if (only if the previous window was different)
 		SET_INPUT_UNICODE_STRING_ADDRESS(
 			INPUT_EXECUTABLE,
 			executable
 		);
+
+		printf("is immersive = %d \n ", isImmersive);
 
 		SET_INPUT_ULL_VALUE(
 			INPUT_IS_IMMERSIVE,
@@ -557,7 +665,9 @@ ESRV_API unsigned int __stdcall custom_foreground_thread(void *px) {
 	//-------------------------------------------------------------------------
 	INPUT_END_EXCEPTIONS_HANDLING(p)
 
-custom_foreground_thread_exit:
+		custom_foreground_thread_exit:
+	// this one doesnt run
+	//printf("THIS THREAD RUNS1 -- %s -- %s -- %d  \n", __FILE__, __FUNCTION__, __LINE__);
 	return(ESRV_FAILURE);
 }
 
@@ -657,7 +767,7 @@ unsigned int __stdcall mouse_messages_loop(void* pv) {
 			process_mouse_messages,
 			h_instance,
 			0
-		);
+	);
 
 	while (
 		GetMessage(
@@ -666,7 +776,7 @@ unsigned int __stdcall mouse_messages_loop(void* pv) {
 			0,
 			0
 		)
-		) {
+	) {
 		TranslateMessage(&message);
 		DispatchMessage(&message);
 	}
