@@ -55,9 +55,9 @@ extern "C" {
 	ULL_COUNTER, \
 	ULL_COUNTER, \
 
-#define WAIT_EVENTS_COUNT (2)
+#define WAIT_EVENTS_COUNT (1)
 	#define STOP_EVENT_INDEX (0)
-	#define CLICK_EVENT_INDEX (1)
+	// #define CLICK_EVENT_INDEX (1)
 
 //-----------------------------------------------------------------------------
 // Function prototypes.
