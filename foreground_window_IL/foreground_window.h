@@ -46,18 +46,18 @@ extern "C" {
 #define INPUT_NAME_STRING "FOREGROUND-WINDOW"
 
 #define INPUT_DESCRIPTION_STRINGS \
-	"Foreground Window Name", \
-	"Foreground Window is Immersive", \
-	"Foreground Window is Hung", \
+	"Executable Name", \
+	"Window is Immersive", \
+	"Window is Hung", \
 
 #define INPUT_TYPES \
 	STRING_COUNTER, \
 	ULL_COUNTER, \
 	ULL_COUNTER, \
 
-#define WAIT_EVENTS_COUNT (1)
+#define WAIT_EVENTS_COUNT (2)
 	#define STOP_EVENT_INDEX (0)
-	// #define CLICK_EVENT_INDEX (1)
+	#define CLICK_EVENT_INDEX (1)
 
 //-----------------------------------------------------------------------------
 // Function prototypes.
@@ -76,7 +76,7 @@ ESRV_STATUS modeler_listen_inputs(PINTEL_MODELER_INPUT_TABLE);
 ESRV_STATUS modeler_process_dctl(PINTEL_MODELER_INPUT_TABLE);
 ESRV_STATUS modeler_process_lctl(PINTEL_MODELER_INPUT_TABLE);
 //-----------------------------------------------------------------------------
-ESRV_API unsigned int __stdcall custom_foreground_thread(void *);
+ESRV_API unsigned int __stdcall custom_foreground_thread(void*);
 ESRV_API unsigned int __stdcall mouse_messages_loop(void*);
 /*--------------------------------------------------------------------------*/
 #ifdef __cplusplus
