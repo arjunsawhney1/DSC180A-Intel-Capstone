@@ -28,28 +28,22 @@
 #include <process.h> // for _beginthreadex
 #include <psapi.h>
 #include "desktop_mapper.h"
+#include "dctl_variables.h"
 
 //-----------------------------------------------------------------------------
 // Global variables.
 //-----------------------------------------------------------------------------
-HHOOK h_mouse_hook = NULL;
-HANDLE h_click_detected = NULL;
+int counter = 0;
 // string pattern to split by
 const wchar_t s[3] = L"\\";
-
-int counter = 0;
 
 //-------------------------------------------------------------------------
 // Custom event-listener variables.
 //-------------------------------------------------------------------------
-DWORD collector_thread_id = 0;
-HANDLE h_collector_thread = NULL;
-
-//-------------------------------------------------------------------------
-// Hook thread variables.
-//-------------------------------------------------------------------------
-DWORD msg_loop_thread_id = 0;
-HANDLE h_msg_loop_thread = NULL;
+DWORD window_collector_thread_id = 0;
+DWORD desktop_collector_thread_id = 0;
+HANDLE h_window_collector_thread = NULL;
+HANDLE h_desktop_collector_thread = NULL;
 
 //-----------------------------------------------------------------------------
 // Child Windows Struct & Callback Function
@@ -132,17 +126,6 @@ Out     : modified PINTEL_MODELER_INPUT_TABLE data structure.
 Return  : status.
 -----------------------------------------------------------------------------*/
 ESRV_API ESRV_STATUS modeler_open_inputs(PINTEL_MODELER_INPUT_TABLE p) {
-//-------------------------------------------------------------------------
-// DCTL
-//-------------------------------------------------------------------------
-	my_dctl_command = 'C'; // your pick, this is the code you will receive back
-	REGISTER_INPUT_LIBRARY_DCTL(
-		"Window Change", // arbitrary name
-		0, // do not allow partial recognition
-		DCTL_QUERY_TOKEN, // could also use ESRV_SUMMARY_DCTL_NAME
-		my_dctl_command,
-		my_dctl_command_argument
-	);
 
 	//-------------------------------------------------------------------------
 	// Generic variables.
@@ -183,29 +166,27 @@ ESRV_API ESRV_STATUS modeler_open_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	}
 
 	//-------------------------------------------------------------------------
-	// Setup threads and sync data.
+	// Register RDCTLs.
 	//-------------------------------------------------------------------------
-	h_click_detected = CreateEvent(
-		NULL,
-		FALSE,
-		FALSE,
-		NULL
+	dctl_command = DCTL_RESET_COMMAND;
+	REGISTER_INPUT_LIBRARY_RDCTL(
+		DCTL_RESET_DCTL_NAME,
+		DCTL_ALLOW_PARTIAL_TOKEN_MATCH,
+		DCTL_RESET_TOKEN,
+		dctl_command,
+		dctl_command_argument,
+		dctl_answer
 	);
-	if (h_click_detected == NULL) {
-		goto modeler_open_inputs_error;
-	}
 	//-------------------------------------------------------------------------
-	h_collector_thread = (HANDLE)_beginthreadex(
-		NULL,
-		0,
-		custom_foreground_thread,
-		(void *)p,
-		0,
-		(unsigned int*)&collector_thread_id
+	dctl_command = DCTL_QUERY_COMMAND;
+	REGISTER_INPUT_LIBRARY_RDCTL(
+		DCTL_QUERY_DCTL_NAME,
+		DCTL_ALLOW_PARTIAL_TOKEN_MATCH,
+		DCTL_QUERY_TOKEN,
+		dctl_command,
+		dctl_command_argument,
+		dctl_answer
 	);
-	if (h_collector_thread == NULL) {
-		goto modeler_open_inputs_error;
-	}
 
 	return(ESRV_SUCCESS);
 
@@ -239,18 +220,6 @@ ESRV_API ESRV_STATUS modeler_close_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	
 	assert(p != NULL);
 
-	//-------------------------------------------------------------------------
-	// Remove mouse hook -- if not removed yet.
-	//-------------------------------------------------------------------------
-	if (h_mouse_hook != NULL) {
-		bret = UnhookWindowsHookEx(h_mouse_hook);
-		if (bret == FALSE) {
-			// Should push an error (read chapter 8)
-			goto modeler_close_inputs_error;
-		}
-		h_mouse_hook = NULL;
-	}
-
 	return(ESRV_SUCCESS);
 
 	//-------------------------------------------------------------------------
@@ -258,8 +227,6 @@ ESRV_API ESRV_STATUS modeler_close_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	//-------------------------------------------------------------------------
 	INPUT_END_EXCEPTIONS_HANDLING(p)
 
-modeler_close_inputs_error:
-	return(ESRV_FAILURE);
 }
 
 /*-----------------------------------------------------------------------------
@@ -303,28 +270,6 @@ ESRV_STATUS modeler_listen_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 
 	assert(p != NULL);
 
-	//-------------------------------------------------------------------------
-	h_msg_loop_thread = (HANDLE)_beginthreadex(
-		NULL,
-		0,
-		mouse_messages_loop,
-		NULL,
-		0,
-		(unsigned int*)&msg_loop_thread_id
-	);
-	if (h_msg_loop_thread == NULL) {
-		goto custom_event_listner_thread_exit;
-	}
-	//-------------------------------------------------------------------------
-	// Run the message loop!
-	//-------------------------------------------------------------------------
-	if (h_msg_loop_thread != NULL) {
-		WaitForSingleObject(
-			h_msg_loop_thread,
-			INFINITE
-		);
-	}
-
 	return(ESRV_SUCCESS);
 
 	//-------------------------------------------------------------------------
@@ -332,15 +277,6 @@ ESRV_STATUS modeler_listen_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	//-------------------------------------------------------------------------
 	INPUT_END_EXCEPTIONS_HANDLING(p)
 
-custom_event_listner_thread_exit:
-	//-------------------------------------------------------------------------
-	// Free resources.
-	//-------------------------------------------------------------------------
-	if (h_click_detected != NULL) {
-		CloseHandle(h_click_detected);
-		h_click_detected = NULL;
-	}
-	return(ESRV_FAILURE);
 }
 
 /*-----------------------------------------------------------------------------
@@ -353,13 +289,38 @@ Return  : status.
 ESRV_STATUS modeler_process_dctl(PINTEL_MODELER_INPUT_TABLE p) {
 
 	//-------------------------------------------------------------------------
-
-	//-------------------------------------------------------------------------
 	// Exception handling section begin.
 	//-------------------------------------------------------------------------
 	INPUT_BEGIN_EXCEPTIONS_HANDLING
 
 	assert(p != NULL);
+
+	//-------------------------------------------------------------------------
+	// Setup threads and sync data.
+	//-------------------------------------------------------------------------
+	h_desktop_collector_thread = (HANDLE)_beginthreadex(
+		NULL,
+		0,
+		map_desktop,
+		(void*)p,
+		0,
+		(unsigned int*)&desktop_collector_thread_id
+	);
+	if (h_desktop_collector_thread == NULL) {
+		goto modeler_process_dctl_exit;
+	}
+	//-------------------------------------------------------------------------
+	h_window_collector_thread = (HANDLE)_beginthreadex(
+		NULL,
+		0,
+		get_window_info,
+		(void*)p,
+		0,
+		(unsigned int*)&window_collector_thread_id
+	);
+	if (h_window_collector_thread == NULL) {
+		goto modeler_process_dctl_exit;
+	}
 
 	return(ESRV_SUCCESS);
 
@@ -368,6 +329,8 @@ ESRV_STATUS modeler_process_dctl(PINTEL_MODELER_INPUT_TABLE p) {
 	//-------------------------------------------------------------------------
 	INPUT_END_EXCEPTIONS_HANDLING(p)
 
+modeler_process_dctl_exit:
+	return(ESRV_FAILURE);
 }
 
 /*-----------------------------------------------------------------------------
@@ -398,164 +361,58 @@ ESRV_STATUS modeler_process_lctl(PINTEL_MODELER_INPUT_TABLE p) {
 }
 
 /*-----------------------------------------------------------------------------
-Function: process_mouse_messages
-Purpose : mouse event handler.
-In      : mouse hook message data.
-Out     : updated click position data.
-Return  : status.
------------------------------------------------------------------------------*/
-LRESULT CALLBACK process_mouse_messages(
-	int code,
-	WPARAM wparam,
-	LPARAM lparam
-) {
-
-	//-------------------------------------------------------------------------
-	// Message handling variables.
-	//-------------------------------------------------------------------------
-	MOUSEHOOKSTRUCT* p_mouse_struct = (MOUSEHOOKSTRUCT*)lparam;
-
-	//-------------------------------------------------------------------------
-	// Exception handling section begin.
-	//-------------------------------------------------------------------------
-	INPUT_BEGIN_EXCEPTIONS_HANDLING
-
-		//-------------------------------------------------------------------------
-		// Do as MSDN says!
-		//-------------------------------------------------------------------------
-		if (code < 0) {
-			goto process_mouse_messages_exit;
-		}
-
-	//-------------------------------------------------------------------------
-	// Get click.
-	//-------------------------------------------------------------------------
-	if (
-		(p_mouse_struct != NULL) &&
-		(
-			(wparam == WM_LBUTTONDOWN) ||
-			(wparam == WM_RBUTTONDOWN)
-			)
-		) {
-		if (h_click_detected != NULL) {
-			(void)SetEvent(h_click_detected);
-		}
-	}
-
-	//-------------------------------------------------------------------------
-	// Exception handling section end.
-	//-------------------------------------------------------------------------
-	INPUT_END_EXCEPTIONS_HANDLING(NULL)
-
-process_mouse_messages_exit:
-	//-------------------------------------------------------------------------
-	// Call next hook in line.
-	//-------------------------------------------------------------------------
-	return(
-		CallNextHookEx(
-			h_mouse_hook,
-			code,
-			wparam,
-			lparam
-		)
-		);
-}
-
-/*-----------------------------------------------------------------------------
-Function: mouse_messages_loop
-Purpose : mouse message hook function.
-In      : pointer - as void - to a message structure.
+Function: map_desktop
+Purpose : map the desktop.
+In      : none.
 Out     : updated input data.
 Return  : status.
 -----------------------------------------------------------------------------*/
-unsigned int __stdcall mouse_messages_loop(void* pv) {
+unsigned int __stdcall map_desktop(void* pv) {
 
-	//-------------------------------------------------------------------------
-	// Message handling variables.
-	//-------------------------------------------------------------------------
-	MSG message = { 0 };
-	HINSTANCE h_instance = GetModuleHandle(NULL);
-
-	//-------------------------------------------------------------------------
-	// Exception handling section begin.
-	//-------------------------------------------------------------------------
-	INPUT_BEGIN_EXCEPTIONS_HANDLING
-
-	//-------------------------------------------------------------------------
-	// Setup mouse hook.
-	//-------------------------------------------------------------------------
-	h_mouse_hook = SetWindowsHookEx(
-		WH_MOUSE_LL,
-		process_mouse_messages,
-		h_instance,
-		0
-	);
-	if (h_mouse_hook == NULL) {
-		goto mouse_messages_loop_error;
-	}
-	//-------------------------------------------------------------------------
-	while (
-		GetMessage(
-			&message,
-			NULL,
-			0,
-			0
-		)
-		) {
-		TranslateMessage(&message);
-		DispatchMessage(&message);
-	}
-
-	//-------------------------------------------------------------------------
-	// Remove mouse hook.
-	//-------------------------------------------------------------------------
-	if (h_mouse_hook != NULL) {
-		(void)UnhookWindowsHookEx(h_mouse_hook);
-		h_mouse_hook = NULL;
-	}
-
-	return(ESRV_SUCCESS);
-
-	//-------------------------------------------------------------------------
-	// Exception handling section end.
-	//-------------------------------------------------------------------------
-	INPUT_END_EXCEPTIONS_HANDLING(NULL)
-
-mouse_messages_loop_error:
-	return(ESRV_FAILURE);
 }
 
 /*-----------------------------------------------------------------------------
-Function: custom_foreground_thread
-Purpose : implement the pure event foreground detector thread.
-In      : pointers to the input table (passed as void *).
-Out     : modified input variables and time events list data.
+Function: get_window_info
+Purpose : measure and and store window data.
+In      : none.
+Out     : updated input data.
 Return  : status.
 -----------------------------------------------------------------------------*/
-ESRV_API unsigned int __stdcall custom_foreground_thread(void *px) {
+unsigned int __stdcall get_window_info(HWND window, void* pv) {
 
 	//-------------------------------------------------------------------------
 	// Generic variables.
 	//-------------------------------------------------------------------------
+	size_t stret = 0;
+	BOOL bret = FALSE;
+
+	//-------------------------------------------------------------------------
+	// Metrics extraction variables.
+	//-------------------------------------------------------------------------
+	POINT pt = { 0 };
+	HWND h_root = NULL;
+	HWND h_clicked = NULL;
+	WINDOWINFO wi = { 0 };
+	//-------------------------------------------------------------------------
+	static HWND last_h = NULL;
+	static POINT last_p = { 0 };
+	static BOOL last_bret = FALSE;
+	static WINDOWINFO last_wi = { 0 };
+	static TCHAR tchar_last_window_name[STRING_BUFFERS_SIZE] = { _T('\0') };
+	static TCHAR tchar_last_class_name[STRING_BUFFERS_SIZE] = { _T('\0') };
+	//-------------------------------------------------------------------------
+	HWND handle = NULL;
+	DWORD pid = 0;
+	DWORD tid = 0;
+	HANDLE process = NULL;
 	DWORD dwret = 0;
-	DWORD debug = 0;
+	//-------------------------------------------------------------------------
+	TCHAR tchar_image_name[MAX_PATH] = { _T('\0') };
+	TCHAR tchar_class_name[STRING_BUFFERS_SIZE] = { _T('\0') };
+	TCHAR tchar_window_name[STRING_BUFFERS_SIZE] = { _T('\0') };
 
 	//-------------------------------------------------------------------------
-	// Input variables.
-	//-------------------------------------------------------------------------
-	HWND lastWindow = GetForegroundWindow(); // used to check current window 
-	assert(lastWindow != NULL);
-	DWORD ref_pid = 0;	// initial pid
-	DWORD last_pid = 0; // used to check against current pid
-	TCHAR procPath[MAX_PATH];
-	TCHAR* token = 0;
-	TCHAR* executable = 0;
-	HANDLE openProc = NULL;
-	BOOL isImmersive = FALSE;
-	BOOL isHung = FALSE;
-
-	//-------------------------------------------------------------------------
-	// Access helper variables.
+	// Ease access variables.
 	//-------------------------------------------------------------------------
 	PINTEL_MODELER_INPUT_TABLE p = NULL;
 
@@ -565,18 +422,18 @@ ESRV_API unsigned int __stdcall custom_foreground_thread(void *px) {
 	HANDLE wait_events[WAIT_EVENTS_COUNT] = { NULL, NULL };
 
 	//-------------------------------------------------------------------------
+
+	//-------------------------------------------------------------------------
 	// Exception handling section begin.
 	//-------------------------------------------------------------------------
 	INPUT_BEGIN_EXCEPTIONS_HANDLING
-	
-	//-------------------------------------------------------------------------
-	// Get PILT pointer.
-	//-------------------------------------------------------------------------
-	assert(px != NULL);
-	if (px == NULL) {
-		goto custom_foreground_thread_exit;
-	}
-	p = (PINTEL_MODELER_INPUT_TABLE)px;
+
+		//-------------------------------------------------------------------------
+		// Get PILT pointer.
+		//-------------------------------------------------------------------------
+		assert(pv != NULL);
+	p = (PINTEL_MODELER_INPUT_TABLE)pv;
+	assert(p != NULL);
 
 	//-------------------------------------------------------------------------
 	// Setup wait variables.
@@ -586,128 +443,257 @@ ESRV_API unsigned int __stdcall custom_foreground_thread(void *px) {
 	assert(wait_events[STOP_EVENT_INDEX] != NULL);
 	assert(wait_events[CLICK_EVENT_INDEX] != NULL);
 
-	while (STOP_REQUEST == 0) {
+	//-------------------------------------------------------------------------
+	// Waiting for the end of run.
+	//-------------------------------------------------------------------------
+	while (f_stop == FALSE) {
+
 		//---------------------------------------------------------------------
-		// Pause to simulate event triggering.
-		// Note:
-		//    Rather than using a sleep, which would lock the event listener 
-		//    thread, we recommend using the method shown below. In general
-		//    developers of event-driven input libraries should add into the
-		//    end condition the event / semaphore via the STOP_SIGNAL macro 
-		//    (also - but not instead - use the STOP_REQUEST macro).
+		// Waiting for mouse event thread's signal.
 		//---------------------------------------------------------------------
 		dwret = WaitForMultipleObjects(
 			WAIT_EVENTS_COUNT,
-			wait_events, // array of handles (events)
-			FALSE, // #checks if we should wait for ALL events or not b4 executing
-			INPUT_PAUSE_IN_MS // 1000ms
+			wait_events,
+			FALSE,
+			INFINITE
 		);
 		switch (dwret) {
-			case STOP_EVENT_INDEX:
-				goto custom_foreground_thread_exit; // time to leave!
-				break;
-			case CLICK_EVENT_INDEX:
-				// fall through to wait_timeout
-			case WAIT_TIMEOUT:
-				lastWindow = GetForegroundWindow();
-				// if not null
-				if (lastWindow) { 
-					// get window pid
-					(void)GetWindowThreadProcessId(lastWindow, &last_pid);
-					assert(last_pid != NULL);
-				
-					// Check if different from previous pid
-					if (ref_pid != last_pid) {
-						// obtains parent id and just copies that to child 
-						windowinfo info = { 0 };
-						(void)GetWindowThreadProcessId(lastWindow, &info.ownerpid);
-						info.childpid = info.ownerpid;
-					
-						// Find true exe
-						(void)EnumChildWindows(lastWindow, EnumChildWindowsCallback, (LPARAM)&info);
-					
-						// Get executable process handle
-						openProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, info.childpid);
-
-						// in the case where openProc is not null
-						if (openProc) {
-							// Get path to executable
-							(void)GetProcessImageFileName(openProc, procPath, MAX_PATH);
-
-							// start with the first token
-							executable = _tcstok(procPath, s);
-
-							// walking through other tokens 
-							while (executable != NULL) {
-								// retrieves current token
-								token = _tcstok(NULL, s);
-
-								// if current token is not null, we want to assign it to the variable we are outputting
-								if (token != NULL) {
-									executable = token;
-								}
-								// in this case, we are done iterating so we break out of the loop
-								else {
-									break;
-								}
-							}
-							// Check if open process is immersive (full screen)
-							isImmersive = IsImmersiveProcess(openProc);
-							// Check if window is hung
-							isHung = IsHungAppWindow(lastWindow);
-						}
-						// used for debugging
-						else {
-							debug = GetLastError();
-						}
-
-						// update the ref_pid
-						ref_pid = last_pid;
-
-						//---------------------------------------------------------------------
-						// Generate and store metrics.
-						//---------------------------------------------------------------------
-						SET_INPUT_UNICODE_STRING_ADDRESS(
-							INPUT_EXECUTABLE,
-							executable
-						);
-						SET_INPUT_AS_LOGGED(INPUT_EXECUTABLE);
-
-						SET_INPUT_ULL_VALUE(
-							INPUT_IS_IMMERSIVE,
-							isImmersive
-						);
-						SET_INPUT_AS_LOGGED(INPUT_IS_IMMERSIVE);
-
-						SET_INPUT_ULL_VALUE(
-							INPUT_IS_HUNG,
-							isHung
-						);
-						SET_INPUT_AS_LOGGED(INPUT_IS_HUNG);
-					
-						//---------------------------------------------------------------------
-						// Trigger logging.
-						//---------------------------------------------------------------------
-						LOG_INPUT_VALUES;
-
-						SET_INPUT_AS_NOT_LOGGED(INPUT_EXECUTABLE);
-						SET_INPUT_AS_NOT_LOGGED(INPUT_IS_IMMERSIVE);
-						SET_INPUT_AS_NOT_LOGGED(INPUT_IS_HUNG);
-					}
-				}
-				break;
-			default:
-				goto custom_foreground_thread_exit; // error condition
+		case WAIT_OBJECT_0 + STOP_EVENT_INDEX:
+			goto get_object_info_exit; // time to leave!
+			break;
+		case WAIT_OBJECT_0 + CLICK_EVENT_INDEX:
+			break; // all good
+		default:
+			goto get_object_info_exit; // error condition
 		} // switch
-	} // while
 
-	return(ESRV_SUCCESS);
+		//---------------------------------------------------------------------
+		// Get click data - as fast as possible.
+		//---------------------------------------------------------------------
+		EnterCriticalSection(&cs);
+		x = pt.x = click_position.x;
+		y = pt.y = click_position.y;
+		LeaveCriticalSection(&cs);
+		//---------------------------------------------------------------------
+		SET_INPUT_ULL_VALUE(
+			INPUT_CLICK_X_POSITION_INDEX,
+			x
+		);
+		//---------------------------------------------------------------------
+		SET_INPUT_ULL_VALUE(
+			INPUT_CLICK_Y_POSITION_INDEX,
+			y
+		);
+
+		//---------------------------------------------------------------------
+		// We have a bit more time to extract the inputs data now. Start with
+		// the clicked window's handle.
+		//---------------------------------------------------------------------
+		h_clicked = WindowFromPoint(pt);
+		//---------------------------------------------------------------------
+		id = (unsigned long long int)h_clicked;
+		SET_INPUT_ULL_VALUE(
+			INPUT_CLICKED_UI_OBJECT_ID_INDEX,
+			id
+		);
+
+		//---------------------------------------------------------------------
+		// Then the name and class name. Warning: name may contain PII.
+		//---------------------------------------------------------------------
+		(void)InternalGetWindowText(
+			h_clicked,
+			tchar_window_name,
+			sizeof(tchar_window_name) / sizeof(TCHAR)
+		);
+		(void)GetClassName(
+			h_clicked,
+			tchar_class_name,
+			sizeof(tchar_class_name) / sizeof(TCHAR)
+		);
+		//---------------------------------------------------------------------
+		(void)wcstombs_s(
+			&stret,
+			window_name,
+			sizeof(window_name),
+			tchar_window_name,
+			_TRUNCATE
+		);
+		SET_INPUT_STRING_ADDRESS(
+			INPUT_CLICKED_UI_OBJECT_NAME_INDEX,
+			window_name
+		);
+		(void)wcstombs_s(
+			&stret,
+			class_name,
+			sizeof(class_name),
+			tchar_class_name,
+			_TRUNCATE
+		);
+		SET_INPUT_STRING_ADDRESS(
+			INPUT_CLICKED_UI_OBJECT_CLASS_NAME_INDEX,
+			class_name
+		);
+
+		//---------------------------------------------------------------------
+		// Get the root window too.
+		//---------------------------------------------------------------------
+		h_root = GetAncestor(
+			h_clicked,
+			GA_ROOT
+		);
+		//---------------------------------------------------------------------
+		root_id = (unsigned long long int)h_clicked;
+		SET_INPUT_ULL_VALUE(
+			INPUT_CLICKED_UI_OBJECT_ROOT_ID_INDEX,
+			root_id
+		);
+
+		//---------------------------------------------------------------------
+		// Get clicked window's styles.
+		//---------------------------------------------------------------------
+		(void)GetWindowInfo(
+			h_clicked,
+			&wi
+		);
+		//---------------------------------------------------------------------
+		style = (unsigned long long int)wi.dwStyle;
+		SET_INPUT_ULL_VALUE(
+			INPUT_CLICKED_UI_OBJECT_STYLE_INDEX,
+			style
+		);
+		style_ex = (unsigned long long int)wi.dwExStyle;
+		SET_INPUT_ULL_VALUE(
+			INPUT_CLICKED_UI_OBJECT_EXTENDED_STYLE_INDEX,
+			style_ex
+		);
+
+		//---------------------------------------------------------------------
+		// Get the owning process image too.
+		// Note:
+		//    You may want to add support for immersive or universal
+		// applications to this code.
+		//---------------------------------------------------------------------
+		tid = GetWindowThreadProcessId(
+			h_root,
+			&pid
+		);
+		process = OpenProcess(
+			PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+			FALSE,
+			pid
+		);
+		if (process != NULL) {
+			dwret = GetProcessImageFileName(
+				process,
+				tchar_image_name,
+				sizeof(tchar_image_name)
+			);
+			bret = CloseHandle(process);
+			process = NULL;
+		}
+		else {
+			(void)_tcsncpy(
+				tchar_image_name,
+				_T("Unable To Open Process"),
+				sizeof(tchar_image_name) / sizeof(TCHAR)
+			);
+		}
+		//---------------------------------------------------------------------
+		(void)wcstombs_s(
+			&stret,
+			image_name,
+			sizeof(image_name),
+			tchar_image_name,
+			_TRUNCATE
+		);
+		SET_INPUT_STRING_ADDRESS(
+			INPUT_CLICKED_UI_OBJECT_OWNING_PROCESS_IMAGE_INDEX,
+			image_name
+		);
+
+		//---------------------------------------------------------------------
+		// Trigger a log.
+		//---------------------------------------------------------------------
+		LOG_INPUT_VALUES;
+
+		//---------------------------------------------------------------------
+		// Save last data - so if filtering is needed in the future, the data
+		// is already available.
+		//---------------------------------------------------------------------
+		last_h = h_clicked;
+		(void)_tcsncpy(
+			tchar_last_window_name,
+			tchar_window_name,
+			sizeof(tchar_window_name) / sizeof(TCHAR)
+		);
+		(void)_tcsncpy(
+			tchar_last_class_name,
+			tchar_class_name,
+			sizeof(tchar_class_name) / sizeof(TCHAR)
+		);
+		(void)memcpy(
+			&last_wi,
+			&wi,
+			sizeof(wi)
+		);
+	}
+
+get_object_info_exit:
+
+	return(0);
 
 	//-------------------------------------------------------------------------
 	// Exception handling section end.
 	//-------------------------------------------------------------------------
 	INPUT_END_EXCEPTIONS_HANDLING(p)
 
-custom_foreground_thread_exit:
-	return(ESRV_FAILURE);
+}
+
+/*-----------------------------------------------------------------------------
+Function: get_process_image_name
+Purpose : get the name of the open process (executable).
+In      : none.
+Out     : updated input data.
+Return  : status.
+-----------------------------------------------------------------------------*/
+unsigned int __stdcall get_process_image_name(HWND window) {
+	TCHAR procPath[MAX_PATH];
+	TCHAR* token = 0;
+	TCHAR* executable = 0;
+	HANDLE openProc = NULL;
+
+	// obtains parent id and just copies that to child 
+	windowinfo info = { 0 };
+	(void)GetWindowThreadProcessId(window, &info.ownerpid);
+	info.childpid = info.ownerpid;
+
+	// Find true exe
+	(void)EnumChildWindows(window, EnumChildWindowsCallback, (LPARAM)&info);
+
+	// Get executable process handle
+	openProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, info.childpid);
+
+	// in the case where openProc is not null
+	if (openProc) {
+		// Get path to executable
+		(void)GetProcessImageFileName(openProc, procPath, MAX_PATH);
+
+		// start with the first token
+		executable = _tcstok(procPath, s);
+
+		// walking through other tokens 
+		while (executable != NULL) {
+			// retrieves current token
+			token = _tcstok(NULL, s);
+
+			// if current token is not null, we want to assign it to the variable we are outputting
+			if (token != NULL) {
+				executable = token;
+			}
+			// in this case, we are done iterating so we break out of the loop
+			else {
+				break;
+			}
+		}
+	}
 }
