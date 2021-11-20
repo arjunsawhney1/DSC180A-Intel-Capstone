@@ -19,7 +19,6 @@
 *** express and approved by Intel in writing.
 **/
 
-
 //-----------------------------------------------------------------------------
 // Headers inclusions.
 //-----------------------------------------------------------------------------
@@ -28,22 +27,30 @@
 #include <process.h> // for _beginthreadex
 #include <psapi.h>
 #include "desktop_mapper.h"
-#include "dctl_variables.h"
 
 //-----------------------------------------------------------------------------
 // Global variables.
 //-----------------------------------------------------------------------------
-int counter = 0;
 // string pattern to split by
 const wchar_t s[3] = L"\\";
 
 //-------------------------------------------------------------------------
 // Custom event-listener variables.
 //-------------------------------------------------------------------------
-DWORD window_collector_thread_id = 0;
-DWORD desktop_collector_thread_id = 0;
-HANDLE h_window_collector_thread = NULL;
-HANDLE h_desktop_collector_thread = NULL;
+DWORD collector_thread_id = 0;
+HANDLE h_collector_thread = NULL;
+HANDLE h_foreground_window_changed = NULL;
+
+//-----------------------------------------------------------------------------
+// Custom DCTL Command
+//-----------------------------------------------------------------------------
+DCTL_COMMAND dctl_command;
+DCTL_COMMAND_DATA dctl_command_argument[
+	DCTL_ARGUMENTS_SIZE
+] = { 0 };
+RDCTL_ANSWER_DATA dctl_answer[
+	DCTL_ARGUMENTS_SIZE
+] = { 0 };
 
 //-----------------------------------------------------------------------------
 // Child Windows Struct & Callback Function
@@ -62,26 +69,32 @@ BOOL CALLBACK EnumChildWindowsCallback(HWND hWnd, LPARAM lp) {
 }
 
 //-------------------------------------------------------------------------
-// Data structures.
+// Windows info struct.
 //-------------------------------------------------------------------------
 typedef struct _windows_structure {
-	unsigned n_windows;
-	HWND windows[100];
-	LONG top_corners[100];
+	TCHAR executable;
+	TCHAR className;
+	HWND window;
+	HWND nextWindow;
+	HWND prevWindow;
+	HWND parentWindow;
+	HWND shellWindow;
+	HWND desktopWindow;
+	HWND foregroundWindow;
+	BOOL isOcculted;
+	BOOL isVisible;
+	BOOL isMinimized;
+	BOOL isHung;
+	BOOL isZoomed;
+	BOOL isWindowUnicode;
+	RECT windowRect;
+	RECT clientRect;
+	WINDOWPLACEMENT placement;
+	LONG style;
+	LONG style_ex;
+	HMONITOR monitor;
+	LPMONITORINFO monitorInfo;
 } WINDOWS_STRUCTURE, * PWINDOWS_STRUCTURE;
-
-typedef struct _samples_structure {
-	unsigned entry_count;
-	PWINDOWS_STRUCTURE windows_entry;
-} SAMPLES_STRUCTURE, * PSAMPLES_STRUCTURE;
-
-WINDOWS_STRUCTURE windows_struct = { 0 };
-SAMPLES_STRUCTURE samples_struct = { 0 };
-
-// temp variables
-HWND h_window_2 = NULL;
-HWND h_window_3 = NULL;
-LPRECT window_rect = { 0 };
 
 /*-----------------------------------------------------------------------------
 Function: modeler_init_inputs
@@ -107,6 +120,7 @@ ESRV_API ESRV_STATUS modeler_init_inputs(
 	assert(pfe != NULL);
 
 	SIGNAL_PURE_EVENT_DRIVEN_MODE;
+	SIGNAL_MULTIPLEXED_LOG_MODE;
 	SET_INPUTS_COUNT(INPUT_COUNT);
 
 	return(ESRV_SUCCESS);
@@ -168,16 +182,6 @@ ESRV_API ESRV_STATUS modeler_open_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	//-------------------------------------------------------------------------
 	// Register RDCTLs.
 	//-------------------------------------------------------------------------
-	dctl_command = DCTL_RESET_COMMAND;
-	REGISTER_INPUT_LIBRARY_RDCTL(
-		DCTL_RESET_DCTL_NAME,
-		DCTL_ALLOW_PARTIAL_TOKEN_MATCH,
-		DCTL_RESET_TOKEN,
-		dctl_command,
-		dctl_command_argument,
-		dctl_answer
-	);
-	//-------------------------------------------------------------------------
 	dctl_command = DCTL_QUERY_COMMAND;
 	REGISTER_INPUT_LIBRARY_RDCTL(
 		DCTL_QUERY_DCTL_NAME,
@@ -187,6 +191,29 @@ ESRV_API ESRV_STATUS modeler_open_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 		dctl_command_argument,
 		dctl_answer
 	);
+	//-------------------------------------------------------------------------
+	dctl_command = DCTL_RESET_COMMAND;
+	REGISTER_INPUT_LIBRARY_RDCTL(
+		DCTL_RESET_DCTL_NAME,
+		DCTL_ALLOW_PARTIAL_TOKEN_MATCH,
+		DCTL_RESET_TOKEN,
+		dctl_command,
+		dctl_command_argument,
+		dctl_answer
+	);
+
+	//-------------------------------------------------------------------------
+	// Setup threads and sync data.
+	//-------------------------------------------------------------------------
+	h_foreground_window_changed = CreateEvent(
+		NULL,
+		FALSE,
+		FALSE,
+		NULL
+	);
+	if (h_foreground_window_changed == NULL) {
+		goto modeler_open_inputs_error;
+	}
 
 	return(ESRV_SUCCESS);
 
@@ -298,27 +325,15 @@ ESRV_STATUS modeler_process_dctl(PINTEL_MODELER_INPUT_TABLE p) {
 	//-------------------------------------------------------------------------
 	// Setup threads and sync data.
 	//-------------------------------------------------------------------------
-	h_desktop_collector_thread = (HANDLE)_beginthreadex(
+	h_collector_thread = (HANDLE)_beginthreadex(
 		NULL,
 		0,
-		map_desktop,
-		(void*)p,
+		custom_desktop_thread,
+		(void*) p,
 		0,
-		(unsigned int*)&desktop_collector_thread_id
+		(unsigned int*)&collector_thread_id
 	);
-	if (h_desktop_collector_thread == NULL) {
-		goto modeler_process_dctl_exit;
-	}
-	//-------------------------------------------------------------------------
-	h_window_collector_thread = (HANDLE)_beginthreadex(
-		NULL,
-		0,
-		get_window_info,
-		(void*)p,
-		0,
-		(unsigned int*)&window_collector_thread_id
-	);
-	if (h_window_collector_thread == NULL) {
+	if (h_collector_thread == NULL) {
 		goto modeler_process_dctl_exit;
 	}
 
@@ -343,8 +358,6 @@ Return  : status.
 ESRV_STATUS modeler_process_lctl(PINTEL_MODELER_INPUT_TABLE p) {
 
 	//-------------------------------------------------------------------------
-
-	//-------------------------------------------------------------------------
 	// Exception handling section begin.
 	//-------------------------------------------------------------------------
 	INPUT_BEGIN_EXCEPTIONS_HANDLING
@@ -361,58 +374,22 @@ ESRV_STATUS modeler_process_lctl(PINTEL_MODELER_INPUT_TABLE p) {
 }
 
 /*-----------------------------------------------------------------------------
-Function: map_desktop
-Purpose : map the desktop.
-In      : none.
-Out     : updated input data.
+Function: custom_desktop_thread
+Purpose : implement the pure event driven desktop mapper thread.
+In      : pointers to the input table (passed as void *).
+Out     : modified input variables and time events list data.
 Return  : status.
 -----------------------------------------------------------------------------*/
-unsigned int __stdcall map_desktop(void* pv) {
-
-}
-
-/*-----------------------------------------------------------------------------
-Function: get_window_info
-Purpose : measure and and store window data.
-In      : none.
-Out     : updated input data.
-Return  : status.
------------------------------------------------------------------------------*/
-unsigned int __stdcall get_window_info(HWND window, void* pv) {
+ESRV_API unsigned int __stdcall custom_desktop_thread(void* px) {
 
 	//-------------------------------------------------------------------------
 	// Generic variables.
 	//-------------------------------------------------------------------------
-	size_t stret = 0;
-	BOOL bret = FALSE;
-
-	//-------------------------------------------------------------------------
-	// Metrics extraction variables.
-	//-------------------------------------------------------------------------
-	POINT pt = { 0 };
-	HWND h_root = NULL;
-	HWND h_clicked = NULL;
-	WINDOWINFO wi = { 0 };
-	//-------------------------------------------------------------------------
-	static HWND last_h = NULL;
-	static POINT last_p = { 0 };
-	static BOOL last_bret = FALSE;
-	static WINDOWINFO last_wi = { 0 };
-	static TCHAR tchar_last_window_name[STRING_BUFFERS_SIZE] = { _T('\0') };
-	static TCHAR tchar_last_class_name[STRING_BUFFERS_SIZE] = { _T('\0') };
-	//-------------------------------------------------------------------------
-	HWND handle = NULL;
-	DWORD pid = 0;
-	DWORD tid = 0;
-	HANDLE process = NULL;
 	DWORD dwret = 0;
-	//-------------------------------------------------------------------------
-	TCHAR tchar_image_name[MAX_PATH] = { _T('\0') };
-	TCHAR tchar_class_name[STRING_BUFFERS_SIZE] = { _T('\0') };
-	TCHAR tchar_window_name[STRING_BUFFERS_SIZE] = { _T('\0') };
+	DWORD debug = 0;
 
 	//-------------------------------------------------------------------------
-	// Ease access variables.
+	// Access helper variables.
 	//-------------------------------------------------------------------------
 	PINTEL_MODELER_INPUT_TABLE p = NULL;
 
@@ -422,241 +399,292 @@ unsigned int __stdcall get_window_info(HWND window, void* pv) {
 	HANDLE wait_events[WAIT_EVENTS_COUNT] = { NULL, NULL };
 
 	//-------------------------------------------------------------------------
-
-	//-------------------------------------------------------------------------
 	// Exception handling section begin.
 	//-------------------------------------------------------------------------
 	INPUT_BEGIN_EXCEPTIONS_HANDLING
 
-		//-------------------------------------------------------------------------
-		// Get PILT pointer.
-		//-------------------------------------------------------------------------
-		assert(pv != NULL);
-	p = (PINTEL_MODELER_INPUT_TABLE)pv;
-	assert(p != NULL);
+	//-------------------------------------------------------------------------
+	// Get PILT pointer.
+	//-------------------------------------------------------------------------
+	assert(px != NULL);
+	if (px == NULL) {
+		goto custom_desktop_thread_exit;
+	}
+	p = (PINTEL_MODELER_INPUT_TABLE)px;
 
 	//-------------------------------------------------------------------------
 	// Setup wait variables.
 	//-------------------------------------------------------------------------
 	wait_events[STOP_EVENT_INDEX] = STOP_SIGNAL;
-	wait_events[CLICK_EVENT_INDEX] = h_click_detected;
+	wait_events[FOREGROUND_WINDOW_CHANGE_INDEX] = h_foreground_window_changed;
 	assert(wait_events[STOP_EVENT_INDEX] != NULL);
-	assert(wait_events[CLICK_EVENT_INDEX] != NULL);
+	assert(wait_events[FOREGROUND_WINDOW_CHANGE_INDEX] != NULL);
 
-	//-------------------------------------------------------------------------
-	// Waiting for the end of run.
-	//-------------------------------------------------------------------------
-	while (f_stop == FALSE) {
-
+	while (STOP_REQUEST == 0) {
 		//---------------------------------------------------------------------
-		// Waiting for mouse event thread's signal.
+		// Pause to simulate event triggering.
+		// Note:
+		//    Rather than using a sleep, which would lock the event listener 
+		//    thread, we recommend using the method shown below. In general
+		//    developers of event-driven input libraries should add into the
+		//    end condition the event / semaphore via the STOP_SIGNAL macro 
+		//    (also - but not instead - use the STOP_REQUEST macro).
 		//---------------------------------------------------------------------
 		dwret = WaitForMultipleObjects(
 			WAIT_EVENTS_COUNT,
-			wait_events,
-			FALSE,
-			INFINITE
+			wait_events, // array of handles (events)
+			FALSE, // #checks if we should wait for ALL events or not b4 executing
+			INPUT_PAUSE_IN_MS // 1000ms
 		);
 		switch (dwret) {
-		case WAIT_OBJECT_0 + STOP_EVENT_INDEX:
-			goto get_object_info_exit; // time to leave!
-			break;
-		case WAIT_OBJECT_0 + CLICK_EVENT_INDEX:
-			break; // all good
-		default:
-			goto get_object_info_exit; // error condition
+			case STOP_EVENT_INDEX:
+				goto custom_desktop_thread_exit; // time to leave!
+				break;
+			case FOREGROUND_WINDOW_CHANGE_INDEX:
+				// fall through to wait_timeout
+			case WAIT_TIMEOUT:
+				map_desktop(p);
+				break;
+			default:
+				goto custom_desktop_thread_exit; // error condition
 		} // switch
+	} // while
 
-		//---------------------------------------------------------------------
-		// Get click data - as fast as possible.
-		//---------------------------------------------------------------------
-		EnterCriticalSection(&cs);
-		x = pt.x = click_position.x;
-		y = pt.y = click_position.y;
-		LeaveCriticalSection(&cs);
-		//---------------------------------------------------------------------
-		SET_INPUT_ULL_VALUE(
-			INPUT_CLICK_X_POSITION_INDEX,
-			x
-		);
-		//---------------------------------------------------------------------
-		SET_INPUT_ULL_VALUE(
-			INPUT_CLICK_Y_POSITION_INDEX,
-			y
-		);
-
-		//---------------------------------------------------------------------
-		// We have a bit more time to extract the inputs data now. Start with
-		// the clicked window's handle.
-		//---------------------------------------------------------------------
-		h_clicked = WindowFromPoint(pt);
-		//---------------------------------------------------------------------
-		id = (unsigned long long int)h_clicked;
-		SET_INPUT_ULL_VALUE(
-			INPUT_CLICKED_UI_OBJECT_ID_INDEX,
-			id
-		);
-
-		//---------------------------------------------------------------------
-		// Then the name and class name. Warning: name may contain PII.
-		//---------------------------------------------------------------------
-		(void)InternalGetWindowText(
-			h_clicked,
-			tchar_window_name,
-			sizeof(tchar_window_name) / sizeof(TCHAR)
-		);
-		(void)GetClassName(
-			h_clicked,
-			tchar_class_name,
-			sizeof(tchar_class_name) / sizeof(TCHAR)
-		);
-		//---------------------------------------------------------------------
-		(void)wcstombs_s(
-			&stret,
-			window_name,
-			sizeof(window_name),
-			tchar_window_name,
-			_TRUNCATE
-		);
-		SET_INPUT_STRING_ADDRESS(
-			INPUT_CLICKED_UI_OBJECT_NAME_INDEX,
-			window_name
-		);
-		(void)wcstombs_s(
-			&stret,
-			class_name,
-			sizeof(class_name),
-			tchar_class_name,
-			_TRUNCATE
-		);
-		SET_INPUT_STRING_ADDRESS(
-			INPUT_CLICKED_UI_OBJECT_CLASS_NAME_INDEX,
-			class_name
-		);
-
-		//---------------------------------------------------------------------
-		// Get the root window too.
-		//---------------------------------------------------------------------
-		h_root = GetAncestor(
-			h_clicked,
-			GA_ROOT
-		);
-		//---------------------------------------------------------------------
-		root_id = (unsigned long long int)h_clicked;
-		SET_INPUT_ULL_VALUE(
-			INPUT_CLICKED_UI_OBJECT_ROOT_ID_INDEX,
-			root_id
-		);
-
-		//---------------------------------------------------------------------
-		// Get clicked window's styles.
-		//---------------------------------------------------------------------
-		(void)GetWindowInfo(
-			h_clicked,
-			&wi
-		);
-		//---------------------------------------------------------------------
-		style = (unsigned long long int)wi.dwStyle;
-		SET_INPUT_ULL_VALUE(
-			INPUT_CLICKED_UI_OBJECT_STYLE_INDEX,
-			style
-		);
-		style_ex = (unsigned long long int)wi.dwExStyle;
-		SET_INPUT_ULL_VALUE(
-			INPUT_CLICKED_UI_OBJECT_EXTENDED_STYLE_INDEX,
-			style_ex
-		);
-
-		//---------------------------------------------------------------------
-		// Get the owning process image too.
-		// Note:
-		//    You may want to add support for immersive or universal
-		// applications to this code.
-		//---------------------------------------------------------------------
-		tid = GetWindowThreadProcessId(
-			h_root,
-			&pid
-		);
-		process = OpenProcess(
-			PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
-			FALSE,
-			pid
-		);
-		if (process != NULL) {
-			dwret = GetProcessImageFileName(
-				process,
-				tchar_image_name,
-				sizeof(tchar_image_name)
-			);
-			bret = CloseHandle(process);
-			process = NULL;
-		}
-		else {
-			(void)_tcsncpy(
-				tchar_image_name,
-				_T("Unable To Open Process"),
-				sizeof(tchar_image_name) / sizeof(TCHAR)
-			);
-		}
-		//---------------------------------------------------------------------
-		(void)wcstombs_s(
-			&stret,
-			image_name,
-			sizeof(image_name),
-			tchar_image_name,
-			_TRUNCATE
-		);
-		SET_INPUT_STRING_ADDRESS(
-			INPUT_CLICKED_UI_OBJECT_OWNING_PROCESS_IMAGE_INDEX,
-			image_name
-		);
-
-		//---------------------------------------------------------------------
-		// Trigger a log.
-		//---------------------------------------------------------------------
-		LOG_INPUT_VALUES;
-
-		//---------------------------------------------------------------------
-		// Save last data - so if filtering is needed in the future, the data
-		// is already available.
-		//---------------------------------------------------------------------
-		last_h = h_clicked;
-		(void)_tcsncpy(
-			tchar_last_window_name,
-			tchar_window_name,
-			sizeof(tchar_window_name) / sizeof(TCHAR)
-		);
-		(void)_tcsncpy(
-			tchar_last_class_name,
-			tchar_class_name,
-			sizeof(tchar_class_name) / sizeof(TCHAR)
-		);
-		(void)memcpy(
-			&last_wi,
-			&wi,
-			sizeof(wi)
-		);
-	}
-
-get_object_info_exit:
-
-	return(0);
+	return(ESRV_SUCCESS);
 
 	//-------------------------------------------------------------------------
 	// Exception handling section end.
 	//-------------------------------------------------------------------------
 	INPUT_END_EXCEPTIONS_HANDLING(p)
 
+custom_desktop_thread_exit:
+	return(ESRV_FAILURE);
+}
+
+/*-----------------------------------------------------------------------------
+Function: map_desktop
+Purpose : map the desktop.
+In      : none.
+Out     : updated input data.
+Return  : status.
+-----------------------------------------------------------------------------*/
+unsigned int __stdcall map_desktop(PINTEL_MODELER_INPUT_TABLE p) {
+	//-------------------------------------------------------------------------
+	// Important variables.
+	//-------------------------------------------------------------------------
+	HWND topWindow = GetTopWindow(NULL); // null if fails
+
+	//iterate through z axis
+	while (topWindow != NULL) {
+		// get window info and add to windowArray
+		WINDOWS_STRUCTURE window = get_window_info(topWindow); // pointer to table
+
+		if (!window.isOcculted) {
+			// log values only if not completely occulted
+			SET_INPUT_UNICODE_STRING_ADDRESS(
+				INPUT_EXECUTABLE,
+				window.executable
+			);
+
+			SET_INPUT_UNICODE_STRING_ADDRESS(
+				INPUT_WINDOW_TITLE,
+				window.className
+			);
+
+			SET_INPUT_UNICODE_STRING_ADDRESS(
+				INPUT_NEXT_WINDOW,
+				window.nextWindow
+			);
+
+			SET_INPUT_UNICODE_STRING_ADDRESS(
+				INPUT_PREV_WINDOW,
+				window.prevWindow
+			);
+
+			SET_INPUT_UNICODE_STRING_ADDRESS(
+				INPUT_PARENT_WINDOW,
+				window.parentWindow
+			);
+
+			SET_INPUT_UNICODE_STRING_ADDRESS(
+				INPUT_SHELL_WINDOW,
+				window.shellWindow
+			);
+
+			SET_INPUT_UNICODE_STRING_ADDRESS(
+				INPUT_DESKTOP_WINDOW,
+				window.desktopWindow
+			);
+
+			SET_INPUT_UNICODE_STRING_ADDRESS(
+				INPUT_FOREGROUND_WINDOW,
+				window.foregroundWindow
+			);
+
+			SET_INPUT_ULL_VALUE(
+				INPUT_IS_HUNG,
+				window.isHung
+			);
+
+			SET_INPUT_ULL_VALUE(
+				INPUT_IS_ZOOMED,
+				window.isZoomed
+			);
+
+			SET_INPUT_ULL_VALUE(
+				INPUT_IS_VISIBLE,
+				window.isVisible
+			);
+
+			SET_INPUT_ULL_VALUE(
+				INPUT_IS_MINIMIZED,
+				window.isMinimized
+			);
+
+			SET_INPUT_ULL_VALUE(
+				INPUT_IS_WINDOW_UNICODE,
+				window.isWindowUnicode
+			);
+
+			SET_INPUT_ULL_VALUE(
+				INPUT_WINDOW_RECT,
+				window.windowRect
+			);
+
+			SET_INPUT_ULL_VALUE(
+				INPUT_CLIENT_WINDOW_RECT,
+				window.clientRect
+			);
+
+			SET_INPUT_ULL_VALUE(
+				INPUT_WINDOW_STYLE,
+				window.style
+			);
+
+			SET_INPUT_ULL_VALUE(
+				INPUT_WINDOW_STYLE_EX,
+				window.style_ex
+			);
+
+			SET_INPUT_ULL_VALUE(
+				INPUT_WINDOW_PLACEMENT,
+				window.wp
+			);
+
+			SET_INPUT_ULL_VALUE(
+				INPUT_WINDOW_MONITOR,
+				window.windowMonitor
+			);
+
+			SET_INPUT_ULL_VALUE(
+				INPUT_MONITOR_INFO,
+				window.monitorInfo
+			);
+
+			//---------------------------------------------------------------------
+			// Trigger a log.
+			//---------------------------------------------------------------------
+			LOG_INPUT_VALUES;
+		}
+
+		// get next window
+		topWindow = GetNextWindow(topWindow, GW_HWNDNEXT);
+	}
+
+	return(ESRV_SUCCESS);
+}
+
+/*-----------------------------------------------------------------------------
+Function: get_window_info
+Purpose : measure and and store window data.
+In      : none.
+Out     : updated input data.
+Return  : status.
+-----------------------------------------------------------------------------*/
+WINDOWS_STRUCTURE get_window_info(HWND window) {
+
+	//-------------------------------------------------------------------------
+	// Window Variables
+	//-------------------------------------------------------------------------
+	WINDOWS_STRUCTURE windows_struct = { 0 };
+	windows_struct.isVisible = IsWindowVisible(window);
+	windows_struct.isMinimized = IsIconic(window);
+
+	LPTSTR* windowTitle;
+	RECT windowRect, clientRect, topRect, subtracted;
+	WINDOWPLACEMENT wp;
+	LPMONITORINFO monitorInfo;
+
+	//-------------------------------------------------------------------------
+	// Exception handling section begin.
+	//-------------------------------------------------------------------------
+	INPUT_BEGIN_EXCEPTIONS_HANDLING
+
+	//-------------------------------------------------------------------------
+	// Gather Window Info
+	//-------------------------------------------------------------------------
+	if (windows_struct.isVisible) {
+		windows_struct.window = window;
+		windows_struct.executable = get_process_image_name(window);
+
+		GetClassName(window, windowTitle, STRING_BUFFERS_SIZE);
+		windows_struct.className = windowTitle;
+
+		windows_struct.parentWindow = GetTopWindow(window);
+		windows_struct.shellWindow = GetShellWindow();
+		windows_struct.desktopWindow = GetDesktopWindow();
+		windows_struct.foregroundWindow = GetForegroundWindow();
+		windows_struct.nextWindow = GetNextWindow(window, GW_HWNDNEXT);
+		windows_struct.prevWindow = GetNextWindow(window, GW_HWNDPREV);
+
+		GetWindowPlacement(window, &wp);
+		windows_struct.placement = wp;
+
+		GetWindowsRect(window, windowRect);
+		windows_struct.windowRect = windowRect;
+
+		GetClientRect(window, &clientRect);
+		windows_struct.clientRect = clientRect;
+
+		GetWindowsRect(windows_struct.prevWindow, topRect);
+
+		if (SubtractRect(&subtracted, &topRect, &windowRect)) {
+			if (subtracted.left + subtracted.right + subtracted.top + subtracted.bottom > 0) {
+				windows_struct.isOcculted = TRUE;
+			}
+			else {
+				windows_struct.isOcculted = FALSE;
+			}
+		}
+		
+		windows_struct.style = GetWindowLongPtrA(window, GWL_STYLE);
+		windows_struct.style_ex = GetWindowLongPtrA(window, GWL_EXSTYLE);
+		windows_struct.isHung = IsHungAppWindow(window);
+		windows_struct.isZoomed = IsZoomed(window);
+		windows_struct.isZoomed = IsZoomed(window);
+		windows_struct.isWindowUnicode = IsWindowUnicode(window);
+		windows_struct.monitor = MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY);
+		
+		GetMonitorInfo(windows_struct.monitor, &monitorInfo);
+		windows_struct.monitorInfo = monitorInfo;
+	}
+
+	return(windows_struct);
+}
 }
 
 /*-----------------------------------------------------------------------------
 Function: get_process_image_name
 Purpose : get the name of the open process (executable).
-In      : none.
+In      : HWND window.
 Out     : updated input data.
 Return  : status.
 -----------------------------------------------------------------------------*/
-unsigned int __stdcall get_process_image_name(HWND window) {
+TCHAR get_process_image_name(HWND window) {
+
+	//-------------------------------------------------------------------------
+	// Local Variables
+	//-------------------------------------------------------------------------
 	TCHAR procPath[MAX_PATH];
 	TCHAR* token = 0;
 	TCHAR* executable = 0;
@@ -695,5 +723,7 @@ unsigned int __stdcall get_process_image_name(HWND window) {
 				break;
 			}
 		}
+
+		return(executable);
 	}
 }
