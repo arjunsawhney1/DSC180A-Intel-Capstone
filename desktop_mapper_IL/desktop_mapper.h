@@ -49,11 +49,7 @@ BOOL CALLBACK EnumChildWindowsCallback(HWND hWnd, LPARAM lp) {
 	return TRUE;
 }
 
-//-----------------------------------------------------------------------------
-// Global variables.
-//-----------------------------------------------------------------------------
-// string pattern to split by
-const wchar_t s[3] = L"\\";
+
 
 //-----------------------------------------------------------------------------
 // Defines.
@@ -62,7 +58,7 @@ const wchar_t s[3] = L"\\";
 #define MAX_MPLEX_LOGGER_CHECKS 10
 #define WAIT_FOR_MULTIPLEX_LOGGER_TIME_IN_MS 1000
 #define INPUT_PAUSE_IN_MS 1000 // does not accept floating point
-#define INPUT_COUNT 20
+#define INPUT_COUNT 26
 	#define INPUT_EXECUTABLE 0
 	#define INPUT_WINDOW_TITLE 1
 	#define INPUT_NEXT_WINDOW 2
@@ -76,13 +72,19 @@ const wchar_t s[3] = L"\\";
 	#define INPUT_IS_VISIBLE 10
 	#define INPUT_IS_MINIMIZED 11
 	#define INPUT_IS_WINDOW_UNICODE 12
-	#define INPUT_WINDOW_RECT 13
-	#define INPUT_CLIENT_WINDOW_RECT 14
-	#define INPUT_WINDOW_STYLE 15
-	#define INPUT_WINDOW_STYLE_EX 16
-	#define INPUT_WINDOW_PLACEMENT 17
-	#define INPUT_WINDOW_MONITOR 18
-	#define INPUT_MONITOR_INFO 19
+	#define INPUT_WINDOW_RECT_LEFT 13
+	#define INPUT_WINDOW_RECT_RIGHT 14
+	#define INPUT_WINDOW_RECT_TOP 15
+	#define INPUT_WINDOW_RECT_BOTTOM 16
+	#define INPUT_CLIENT_WINDOW_RECT_LEFT 17
+	#define INPUT_CLIENT_WINDOW_RECT_RIGHT 18
+	#define INPUT_CLIENT_WINDOW_RECT_TOP 19
+	#define INPUT_CLIENT_WINDOW_RECT_BOTTOM 20
+	#define INPUT_WINDOW_STYLE 21
+	#define INPUT_WINDOW_STYLE_EX 22
+	#define INPUT_WINDOW_PLACEMENT 23
+	#define INPUT_WINDOW_MONITOR 24
+	#define INPUT_MONITOR_INFO 25
 
 #define INPUT_NAME_STRING "DESKTOP-MAPPER"
 
@@ -100,8 +102,14 @@ const wchar_t s[3] = L"\\";
 	"Window is Visible", \
 	"Window is Minimized", \
 	"Window is Unicode", \
-	"Window Rectangle", \
-	"Client Window Rectangle", \
+	"Window Rectangle Left", \
+	"Window Rectangle Right", \
+	"Window Rectangle Top", \
+	"Window Rectangle Bottom", \
+	"Client Window Rectangle Left", \
+	"Client Window Rectangle Right", \
+	"Client Window Rectangle Top", \
+	"Client Window Rectangle Bottom", \
 	"Window Style", \
 	"Window Style Ex", \
 	"Window Placement", \
@@ -117,6 +125,11 @@ const wchar_t s[3] = L"\\";
 	STRING_COUNTER, \
 	STRING_COUNTER, \
 	STRING_COUNTER, \
+	ULL_COUNTER, \
+	ULL_COUNTER, \
+	ULL_COUNTER, \
+	ULL_COUNTER, \
+	ULL_COUNTER, \
 	ULL_COUNTER, \
 	ULL_COUNTER, \
 	ULL_COUNTER, \
@@ -153,9 +166,6 @@ ESRV_STATUS modeler_process_lctl(PINTEL_MODELER_INPUT_TABLE);
 //-----------------------------------------------------------------------------
 ESRV_API unsigned int __stdcall custom_desktop_thread(void*);
 ESRV_API unsigned int __stdcall custom_logger_thread(void*);
-ESRV_API unsigned int __stdcall map_desktop(PINTEL_MODELER_INPUT_TABLE);
-ESRV_API unsigned int __stdcall get_window_info(WINDOWS_STRUCTURE*);
-ESRV_API unsigned int __stdcall multiplex_logging(PINTEL_MODELER_INPUT_TABLE);
 TCHAR get_process_image_name(HWND);
 
 /*--------------------------------------------------------------------------*/

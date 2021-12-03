@@ -66,6 +66,14 @@ typedef struct _windows_structure {
 	HMONITOR monitor;
 	LPMONITORINFO monitorInfo;
 } WINDOWS_STRUCTURE, * PWINDOWS_STRUCTURE;
+WINDOWS_STRUCTURE windows_struct = {0};
+
+//-----------------------------------------------------------------------------
+// Global variables.
+//-----------------------------------------------------------------------------
+CRITICAL_SECTION cs = { NULL };
+// string pattern to split by
+const wchar_t s[3] = L"\\";
 
 /*-----------------------------------------------------------------------------
 Function: modeler_init_inputs
@@ -165,6 +173,7 @@ ESRV_API ESRV_STATUS modeler_open_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	//-------------------------------------------------------------------------
 	// Setup threads and sync data.
 	//-------------------------------------------------------------------------
+	InitializeCriticalSection(&cs);
 	h_log_window_info = CreateEvent(
 		NULL,
 		FALSE,
@@ -221,6 +230,7 @@ ESRV_API ESRV_STATUS modeler_open_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	INPUT_END_EXCEPTIONS_HANDLING(p)
 
 modeler_open_inputs_error:
+	DeleteCriticalSection(&cs);
 	return(ESRV_FAILURE);
 }
 
@@ -462,7 +472,7 @@ In      : none.
 Out     : updated input data.
 Return  : status.
 -----------------------------------------------------------------------------*/
-ESRV_API unsigned int __stdcall map_desktop(PINTEL_MODELER_INPUT_TABLE p) {
+unsigned int __stdcall map_desktop(PINTEL_MODELER_INPUT_TABLE p) {
 	//-------------------------------------------------------------------------
 	// Important variables.
 	//-------------------------------------------------------------------------
@@ -471,7 +481,6 @@ ESRV_API unsigned int __stdcall map_desktop(PINTEL_MODELER_INPUT_TABLE p) {
 	//iterate through z axis
 	while (topWindow != NULL) {
 		// declare the structure here and pass the address of this structure to get_window_info
-		WINDOWS_STRUCTURE windows_struct = { 0 };
 		windows_struct.foregroundWindow = topWindow;
 		get_window_info(&windows_struct);
 
@@ -502,12 +511,12 @@ In      : none.
 Out     : updated input data.
 Return  : status.
 -----------------------------------------------------------------------------*/
-ESRV_API unsigned int __stdcall get_window_info(WINDOWS_STRUCTURE * windows_struct) {
+unsigned int __stdcall get_window_info(WINDOWS_STRUCTURE * windows_struct) {
 
 	//-------------------------------------------------------------------------
 	// Window Variables
 	//-------------------------------------------------------------------------
-	LPTSTR* windowTitle;
+	LPTSTR windowTitle;
 	RECT windowRect, clientRect, topRect, subtracted;
 	WINDOWPLACEMENT wp;
 	LPMONITORINFO monitorInfo;
@@ -525,7 +534,7 @@ ESRV_API unsigned int __stdcall get_window_info(WINDOWS_STRUCTURE * windows_stru
 	if (windows_struct->isVisible) {
 		* windows_struct->executable = get_process_image_name(windows_struct->foregroundWindow);
 
-		GetClassName(windows_struct->foregroundWindow, windowTitle, STRING_BUFFERS_SIZE);
+		GetClassName(windows_struct->foregroundWindow, &windowTitle, STRING_BUFFERS_SIZE);
 		* windows_struct->className = windowTitle;
 
 		windows_struct->parentWindow = GetTopWindow(windows_struct->foregroundWindow);
@@ -538,13 +547,13 @@ ESRV_API unsigned int __stdcall get_window_info(WINDOWS_STRUCTURE * windows_stru
 		GetWindowPlacement(windows_struct->foregroundWindow, &wp);
 		windows_struct->placement = wp;
 
-		GetWindowsRect(windows_struct->foregroundWindow, windowRect);
+		GetWindowRect(windows_struct->foregroundWindow, &windowRect);
 		windows_struct->windowRect = windowRect;
 
 		GetClientRect(windows_struct->foregroundWindow, &clientRect);
 		windows_struct->clientRect = clientRect;
 
-		GetWindowsRect(windows_struct->prevWindow, topRect);
+		GetWindowRect(windows_struct->prevWindow, &topRect);
 
 		if (SubtractRect(&subtracted, &topRect, &windowRect)) {
 			if (subtracted.left + subtracted.right + subtracted.top + subtracted.bottom > 0) {
@@ -645,7 +654,7 @@ In      : pointers to the input table (passed as void *).
 Out     : modified input variables and time events list data.
 Return  : status.
 -----------------------------------------------------------------------------*/
-ESRV_API unsigned int __stdcall custom_logger_thread(void* px) {
+unsigned int __stdcall custom_logger_thread(void* px) {
 	//-------------------------------------------------------------------------
 	// Generic variables.
 	//-------------------------------------------------------------------------
@@ -708,7 +717,11 @@ ESRV_API unsigned int __stdcall custom_logger_thread(void* px) {
 		case FOREGROUND_WINDOW_CHANGE_INDEX:
 			// fall through to wait_timeout
 		case WAIT_TIMEOUT:
+			EnterCriticalSection(&cs);
+			
 			multiplex_logging(p);
+			
+			LeaveCriticalSection(&cs);
 			break;
 		default:
 			goto custom_logger_thread_exit; // error condition
@@ -740,12 +753,156 @@ In      : PINTEL_MODELER_INPUT_TABLE p
 Out     : ESRV_STATUS.
 Return  : status.
 -----------------------------------------------------------------------------*/
-ESRV_API unsigned int __stdcall multiplex_logging(PINTEL_MODELER_INPUT_TABLE p) {
+unsigned int __stdcall multiplex_logging(PINTEL_MODELER_INPUT_TABLE p) {
+
+	TCHAR* executable[STRING_BUFFERS_SIZE]; //1024 bytes
+	TCHAR* className[STRING_BUFFERS_SIZE];
+	HWND window;
+	HWND nextWindow;
+	HWND prevWindow;
+	HWND parentWindow;
+	HWND shellWindow;
+	HWND desktopWindow;
+	HWND foregroundWindow;
+	BOOL isOcculted;
+	BOOL isVisible;
+	BOOL isMinimized;
+	BOOL isHung;
+	BOOL isZoomed;
+	BOOL isWindowUnicode;
+	RECT windowRect;
+	RECT clientRect;
+	WINDOWPLACEMENT placement;
+	LONG style;
+	LONG style_ex;
+	HMONITOR monitor;
+	LPMONITORINFO monitorInfo;
+
+	SET_INPUT_UNICODE_STRING_ADDRESS(
+		INPUT_EXECUTABLE,
+		windows_struct.executable
+	);
+
+	SET_INPUT_UNICODE_STRING_ADDRESS(
+		INPUT_WINDOW_TITLE,
+		windows_struct.className
+	);
+
+	SET_INPUT_UNICODE_STRING_ADDRESS(
+		INPUT_PREV_WINDOW,
+		windows_struct.prevWindow
+	);
+
+	SET_INPUT_UNICODE_STRING_ADDRESS(
+		INPUT_PARENT_WINDOW,
+		windows_struct.parentWindow
+	);
+
+	SET_INPUT_UNICODE_STRING_ADDRESS(
+		INPUT_SHELL_WINDOW,
+		windows_struct.shellWindow
+	);
+
+	SET_INPUT_UNICODE_STRING_ADDRESS(
+		INPUT_DESKTOP_WINDOW,
+		windows_struct.desktopWindow
+	);
+
+	SET_INPUT_UNICODE_STRING_ADDRESS(
+		INPUT_FOREGROUND_WINDOW,
+		windows_struct.foregroundWindow
+	);
+
+	SET_INPUT_ULL_VALUE(
+		INPUT_IS_HUNG,
+		windows_struct.isHung
+	);
+
+	SET_INPUT_ULL_VALUE(
+		INPUT_IS_ZOOMED,
+		windows_struct.isZoomed
+	);
+
+	SET_INPUT_ULL_VALUE(
+		INPUT_IS_VISIBLE,
+		windows_struct.isVisible
+	);
+
+	SET_INPUT_ULL_VALUE(
+		INPUT_IS_MINIMIZED,
+		windows_struct.isMinimized
+	);
+
+	SET_INPUT_ULL_VALUE(
+		INPUT_IS_WINDOW_UNICODE,
+		windows_struct.isWindowUnicode
+	);
+
+	SET_INPUT_ULL_VALUE(
+		INPUT_WINDOW_RECT_LEFT,
+		windows_struct.windowRect.left
+	);
+
+	SET_INPUT_ULL_VALUE(
+		INPUT_WINDOW_RECT_RIGHT,
+		windows_struct.windowRect.right
+	);
+
+	SET_INPUT_ULL_VALUE(
+		INPUT_WINDOW_RECT_TOP,
+		windows_struct.windowRect.top
+	);
+
+	SET_INPUT_ULL_VALUE(
+		INPUT_WINDOW_RECT_BOTTOM,
+		windows_struct.windowRect.bottom
+	);
+
+	SET_INPUT_ULL_VALUE(
+		INPUT_CLIENT_WINDOW_RECT_LEFT,
+		windows_struct.clientRect.left
+	);
+
+	SET_INPUT_ULL_VALUE(
+		INPUT_CLIENT_WINDOW_RECT_RIGHT,
+		windows_struct.clientRect.right
+	);
+
+	SET_INPUT_ULL_VALUE(
+		INPUT_CLIENT_WINDOW_RECT_TOP,
+		windows_struct.clientRect.top
+	);
+
+	SET_INPUT_ULL_VALUE(
+		INPUT_CLIENT_WINDOW_RECT_BOTTOM,
+		windows_struct.clientRect.bottom
+	);
+
+	SET_INPUT_ULL_VALUE(
+		INPUT_WINDOW_STYLE,
+		windows_struct.style
+	);
+
+	SET_INPUT_ULL_VALUE(
+		INPUT_WINDOW_STYLE_EX,
+		windows_struct.style_ex
+	);
+
+	SET_INPUT_ULL_VALUE(
+		INPUT_WINDOW_MONITOR,
+		windows_struct.monitor
+	);
+
+	SET_INPUT_ULL_VALUE(
+		INPUT_MONITOR_INFO,
+		windows_struct.monitorInfo
+	);
 
 	//---------------------------------------------------------------------
 	// Trigger a log.
 	//---------------------------------------------------------------------
 	LOG_INPUT_VALUES;
 
-	RETURN(ESRV_SUCCESS);
+	
+	return(ESRV_SUCCESS);
 }
