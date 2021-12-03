@@ -33,26 +33,13 @@ extern "C" {
 #endif // __cplusplus
 /*--------------------------------------------------------------------------*/
 
-//-----------------------------------------------------------------------------
-// DCTL Defines.
-//-----------------------------------------------------------------------------
-#define DCTL_RESET_COMMAND '!'
-#define DCTL_RESET_TOKEN "RESET"
-#define DCTL_RESET_DCTL_NAME "RESET-COUNTER"
-
-#define DCTL_QUERY_COMMAND '?'
-#define DCTL_QUERY_TOKEN "QUERY"
-#define DCTL_QUERY_DCTL_NAME "QUERY-COUNTER"
-
-#define DCTL_ARGUMENTS_SIZE \
-	(20)
-
-#define BUFFER_SIZE \
 
 //-----------------------------------------------------------------------------
 // Defines.
 //-----------------------------------------------------------------------------
 #define STRING_BUFFERS_SIZE 1024
+#define MAX_MPLEX_LOGGER_CHECKS 10
+#define WAIT_FOR_MULTIPLEX_LOGGER_TIME_IN_MS 1000
 #define INPUT_PAUSE_IN_MS 1000 // does not accept floating point
 #define INPUT_COUNT 20
 	#define INPUT_EXECUTABLE 0
