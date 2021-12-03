@@ -32,14 +32,13 @@
 #include <process.h> // for _beginthreadex
 #include <psapi.h>
 #include "foreground_window.h"
+#include "dctl_variables.h"
 
 //-----------------------------------------------------------------------------
 // Global variables.
 //-----------------------------------------------------------------------------
 HHOOK h_mouse_hook = NULL;
 HANDLE h_click_detected = NULL;
-// string pattern to split by
-const wchar_t s[3] = L"\\";
 
 //-------------------------------------------------------------------------
 // Custom event-listener variables.
@@ -52,22 +51,6 @@ HANDLE h_collector_thread = NULL;
 //-------------------------------------------------------------------------
 DWORD msg_loop_thread_id = 0;
 HANDLE h_msg_loop_thread = NULL;
-
-//-----------------------------------------------------------------------------
-// Child Windows Struct & Callback Function
-//-----------------------------------------------------------------------------
-typedef struct {
-	DWORD ownerpid;
-	DWORD childpid;
-} windowinfo;
-
-BOOL CALLBACK EnumChildWindowsCallback(HWND hWnd, LPARAM lp) {
-	windowinfo* info = (windowinfo*)lp;
-	DWORD pid = 0;
-	GetWindowThreadProcessId(hWnd, &pid);
-	if (pid != info->ownerpid) info->childpid = pid;
-	return TRUE;
-}
 
 /*-----------------------------------------------------------------------------
 Function: modeler_init_inputs
@@ -241,11 +224,21 @@ Return  : status.
 ESRV_STATUS modeler_read_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 
 	//-------------------------------------------------------------------------
+	// Client logic implementation variables.
+	//-------------------------------------------------------------------------
+	static int x = 0;
+	ESRV_STATUS ret = ESRV_FAILURE;
+	unsigned long long int v = 0;
+	char buffer[BUFFER_SIZE] = { '\0' };
+
+	//-------------------------------------------------------------------------
+
+	//-------------------------------------------------------------------------
 	// Exception handling section begin.
 	//-------------------------------------------------------------------------
 	INPUT_BEGIN_EXCEPTIONS_HANDLING
 
-	assert(p != NULL);
+		assert(p != NULL);
 
 	return(ESRV_SUCCESS);
 
@@ -254,6 +247,9 @@ ESRV_STATUS modeler_read_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	//-------------------------------------------------------------------------
 	INPUT_END_EXCEPTIONS_HANDLING(p)
 
+		modeler_read_inputs_error:
+
+	return(ESRV_FAILURE);
 }
 
 /*-----------------------------------------------------------------------------
@@ -516,6 +512,7 @@ ESRV_API unsigned int __stdcall custom_foreground_thread(void *px) {
 	assert(lastWindow != NULL);
 	DWORD ref_pid = 0;	// initial pid
 	DWORD last_pid = 0; // used to check against current pid
+	ESRV_STATUS ret;
 	TCHAR procPath[MAX_PATH];
 	TCHAR* token = 0;
 	TCHAR* executable = 0;
@@ -662,6 +659,14 @@ ESRV_API unsigned int __stdcall custom_foreground_thread(void *px) {
 						SET_INPUT_AS_NOT_LOGGED(INPUT_EXECUTABLE);
 						SET_INPUT_AS_NOT_LOGGED(INPUT_IS_IMMERSIVE);
 						SET_INPUT_AS_NOT_LOGGED(INPUT_IS_HUNG);
+
+						ret = EMIT_IDCTL_NO_WAIT(
+							DCTL_CUSTOM_TOKEN,
+							""
+						);
+						if (ret == ESRV_FAILURE) {
+							goto custom_foreground_thread_exit;
+						}
 					}
 				}
 				break;

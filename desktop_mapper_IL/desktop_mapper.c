@@ -29,12 +29,6 @@
 #include "desktop_mapper.h"
 #include "dctl_variables.h"
 
-//-----------------------------------------------------------------------------
-// Global variables.
-//-----------------------------------------------------------------------------
-// string pattern to split by
-const wchar_t s[3] = L"\\";
-
 //-------------------------------------------------------------------------
 // Custom event-listener variables.
 //-------------------------------------------------------------------------
@@ -44,22 +38,6 @@ DWORD logger_thread_id = 0;
 HANDLE h_logger_thread = NULL;
 HANDLE h_foreground_window_changed = NULL;
 HANDLE h_log_window_info = NULL;
-
-//-----------------------------------------------------------------------------
-// Child Windows Struct & Callback Function
-//-----------------------------------------------------------------------------
-typedef struct {
-	DWORD ownerpid;
-	DWORD childpid;
-} windowinfo;
-
-BOOL CALLBACK EnumChildWindowsCallback(HWND hWnd, LPARAM lp) {
-	windowinfo* info = (windowinfo*)lp;
-	DWORD pid = 0;
-	GetWindowThreadProcessId(hWnd, &pid);
-	if (pid != info->ownerpid) info->childpid = pid;
-	return TRUE;
-}
 
 //-------------------------------------------------------------------------
 // Windows info struct.
@@ -187,18 +165,6 @@ ESRV_API ESRV_STATUS modeler_open_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	//-------------------------------------------------------------------------
 	// Setup threads and sync data.
 	//-------------------------------------------------------------------------
-	
-	h_foreground_window_changed = CreateEvent(
-		NULL,
-		FALSE,
-		FALSE,
-		NULL
-	);
-	if (h_foreground_window_changed == NULL) {
-		goto modeler_open_inputs_error;
-	}
-	//-------------------------------------------------------------------------
-	
 	h_log_window_info = CreateEvent(
 		NULL,
 		FALSE,
@@ -209,7 +175,16 @@ ESRV_API ESRV_STATUS modeler_open_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 		goto modeler_open_inputs_error;
 	}
 	//-------------------------------------------------------------------------
-	
+	h_foreground_window_changed = CreateEvent(
+		NULL,
+		FALSE,
+		FALSE,
+		NULL
+	);
+	if (h_foreground_window_changed == NULL) {
+		goto modeler_open_inputs_error;
+	}
+	//-------------------------------------------------------------------------
 	h_collector_thread = (HANDLE)_beginthreadex(
 		NULL,
 		0,
@@ -221,7 +196,6 @@ ESRV_API ESRV_STATUS modeler_open_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	if (h_collector_thread == NULL) {
 		goto modeler_open_inputs_error;
 	}
-
 	//-------------------------------------------------------------------------
 	/*EnterCriticalSection();*/
 
@@ -471,7 +445,197 @@ ESRV_API unsigned int __stdcall custom_desktop_thread(void* px) {
 	INPUT_END_EXCEPTIONS_HANDLING(p)
 
 custom_desktop_thread_exit:
+	//-------------------------------------------------------------------------
+	// Free resources.
+	//-------------------------------------------------------------------------
+	if (h_foreground_window_changed != NULL) {
+		CloseHandle(h_foreground_window_changed);
+		h_foreground_window_changed = NULL;
+	}
 	return(ESRV_FAILURE);
+}
+
+/*-----------------------------------------------------------------------------
+Function: map_desktop
+Purpose : map the desktop.
+In      : none.
+Out     : updated input data.
+Return  : status.
+-----------------------------------------------------------------------------*/
+ESRV_API unsigned int __stdcall map_desktop(PINTEL_MODELER_INPUT_TABLE p) {
+	//-------------------------------------------------------------------------
+	// Important variables.
+	//-------------------------------------------------------------------------
+	HWND topWindow = GetTopWindow(NULL); // null if fails
+
+	//iterate through z axis
+	while (topWindow != NULL) {
+		// declare the structure here and pass the address of this structure to get_window_info
+		WINDOWS_STRUCTURE windows_struct = { 0 };
+		windows_struct.foregroundWindow = topWindow;
+		get_window_info(&windows_struct);
+
+		if (!windows_struct.isOcculted) {
+			// do the logging in a logger thread with critical section
+			// signal the logger thread using another event -- h_log_window_info
+			// critical section to protect access to that data
+			// allocate and reallocate the memory manually for the queue
+			// logic of logger: log until the log signal queue is empty 
+			// signal is auto-reset. 
+
+			if (h_log_window_info != NULL) {
+				(void)SetEvent(h_log_window_info);
+			}
+		}
+
+		// get next window
+		topWindow = GetNextWindow(topWindow, GW_HWNDNEXT);
+	}
+
+	return(ESRV_SUCCESS);
+}
+
+/*-----------------------------------------------------------------------------
+Function: get_window_info
+Purpose : measure and and store window data.
+In      : none.
+Out     : updated input data.
+Return  : status.
+-----------------------------------------------------------------------------*/
+ESRV_API unsigned int __stdcall get_window_info(WINDOWS_STRUCTURE * windows_struct) {
+
+	//-------------------------------------------------------------------------
+	// Window Variables
+	//-------------------------------------------------------------------------
+	LPTSTR* windowTitle;
+	RECT windowRect, clientRect, topRect, subtracted;
+	WINDOWPLACEMENT wp;
+	LPMONITORINFO monitorInfo;
+
+	//-------------------------------------------------------------------------
+	// Exception handling section begin.
+	//-------------------------------------------------------------------------
+	INPUT_BEGIN_EXCEPTIONS_HANDLING
+
+	windows_struct->isVisible = IsWindowVisible(windows_struct->foregroundWindow);
+
+	//-------------------------------------------------------------------------
+	// Gather Window Info
+	//-------------------------------------------------------------------------
+	if (windows_struct->isVisible) {
+		* windows_struct->executable = get_process_image_name(windows_struct->foregroundWindow);
+
+		GetClassName(windows_struct->foregroundWindow, windowTitle, STRING_BUFFERS_SIZE);
+		* windows_struct->className = windowTitle;
+
+		windows_struct->parentWindow = GetTopWindow(windows_struct->foregroundWindow);
+		windows_struct->shellWindow = GetShellWindow();
+		windows_struct->desktopWindow = GetDesktopWindow();
+		windows_struct->foregroundWindow = GetForegroundWindow();
+		windows_struct->nextWindow = GetNextWindow(windows_struct->foregroundWindow, GW_HWNDNEXT);
+		windows_struct->prevWindow = GetNextWindow(windows_struct->foregroundWindow, GW_HWNDPREV);
+
+		GetWindowPlacement(windows_struct->foregroundWindow, &wp);
+		windows_struct->placement = wp;
+
+		GetWindowsRect(windows_struct->foregroundWindow, windowRect);
+		windows_struct->windowRect = windowRect;
+
+		GetClientRect(windows_struct->foregroundWindow, &clientRect);
+		windows_struct->clientRect = clientRect;
+
+		GetWindowsRect(windows_struct->prevWindow, topRect);
+
+		if (SubtractRect(&subtracted, &topRect, &windowRect)) {
+			if (subtracted.left + subtracted.right + subtracted.top + subtracted.bottom > 0) {
+				windows_struct->isOcculted = TRUE;
+			}
+			else {
+				windows_struct->isOcculted = FALSE;
+			}
+		}
+		
+		windows_struct->isHung = IsHungAppWindow(windows_struct->foregroundWindow);
+		windows_struct->isMinimized = IsIconic(windows_struct->foregroundWindow);
+		windows_struct->isZoomed = IsZoomed(windows_struct->foregroundWindow);
+		windows_struct->isZoomed = IsZoomed(windows_struct->foregroundWindow);
+		windows_struct->isWindowUnicode = IsWindowUnicode(windows_struct->foregroundWindow);
+		windows_struct->style = GetWindowLongPtrA(windows_struct->foregroundWindow, GWL_STYLE);
+		windows_struct->style_ex = GetWindowLongPtrA(windows_struct->foregroundWindow, GWL_EXSTYLE);
+		
+		windows_struct->monitor = MonitorFromWindow(windows_struct->foregroundWindow, MONITOR_DEFAULTTOPRIMARY);
+		GetMonitorInfo(windows_struct->monitor, &monitorInfo);
+		windows_struct->monitorInfo = monitorInfo;
+	}
+	else {
+		goto get_window_info_exit;
+	}
+
+	return(ESRV_SUCCESS);
+
+	//-------------------------------------------------------------------------
+	// Exception handling section end.
+	//-------------------------------------------------------------------------
+	INPUT_END_EXCEPTIONS_HANDLING(NULL)
+
+get_window_info_exit:
+	return(ESRV_FAILURE);
+}
+
+
+/*-----------------------------------------------------------------------------
+Function: get_process_image_name
+Purpose : get the name of the open process (executable).
+In      : HWND window.
+Out     : updated input data.
+Return  : status.
+-----------------------------------------------------------------------------*/
+TCHAR get_process_image_name(HWND window) {
+
+	//-------------------------------------------------------------------------
+	// Local Variables
+	//-------------------------------------------------------------------------
+	TCHAR procPath[MAX_PATH];
+	TCHAR* token = 0;
+	TCHAR* executable = 0;
+	HANDLE openProc = NULL;
+
+	// obtains parent id and just copies that to child 
+	windowinfo info = { 0 };
+	(void)GetWindowThreadProcessId(window, &info.ownerpid);
+	info.childpid = info.ownerpid;
+
+	// Find true exe
+	(void)EnumChildWindows(window, EnumChildWindowsCallback, (LPARAM)&info);
+
+	// Get executable process handle
+	openProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, info.childpid);
+
+	// in the case where openProc is not null
+	if (openProc) {
+		// Get path to executable
+		(void)GetProcessImageFileName(openProc, procPath, MAX_PATH);
+
+		// start with the first token
+		executable = _tcstok(procPath, s);
+
+		// walking through other tokens 
+		while (executable != NULL) {
+			// retrieves current token
+			token = _tcstok(NULL, s);
+
+			// if current token is not null, we want to assign it to the variable we are outputting
+			if (token != NULL) {
+				executable = token;
+			}
+			// in this case, we are done iterating so we break out of the loop
+			else {
+				break;
+			}
+		}
+
+		return(executable);
+	}
 }
 
 /*-----------------------------------------------------------------------------
@@ -482,16 +646,12 @@ Out     : modified input variables and time events list data.
 Return  : status.
 -----------------------------------------------------------------------------*/
 ESRV_API unsigned int __stdcall custom_logger_thread(void* px) {
-
-
-	DWORD check_counts = 0;
-	BOOL IS_MULTIPLEX_LOG_SUPPORTED = FALSE;
-
 	//-------------------------------------------------------------------------
 	// Generic variables.
 	//-------------------------------------------------------------------------
 	DWORD dwret = 0;
 	DWORD debug = 0;
+	DWORD check_counts = 0;
 
 	//-------------------------------------------------------------------------
 	// Access helper variables.
@@ -553,43 +713,6 @@ ESRV_API unsigned int __stdcall custom_logger_thread(void* px) {
 		default:
 			goto custom_logger_thread_exit; // error condition
 		} // switch
-
-
-	logger_thread_check_logger_mplex_support:
-		if (IS_MULTIPLEX_LOG_SUPPORTED) {
-			if (check_counts++ < MAX_MPLEX_LOGGER_CHECKS) {
-				dwret = WaitForSingleObject(
-					STOP_SIGNAL,
-					WAIT_FOR_MULTIPLEX_LOGGER_TIME_IN_MS
-				);
-				switch (dwret) {
-				case WAIT_OBJECT_0: // leave!
-					goto custom_logger_thread_exit;
-					break;
-				case WAIT_TIMEOUT:
-					goto logger_thread_check_logger_mplex_support;
-					break; // wait again
-				default:
-					INPUT_ERROR_PUSH(
-						SYSTEM_PATH,
-						ERROR_UNABLE_TO_SYNCHRONIZE,
-						CATASTROPHIC,
-						logger_thread_error
-					);
-				} // switch
-			}
-			else {
-				INPUT_ERROR_PUSH(
-					APPLICATION_PATH,
-					ERROR_TOO_SLOW_LOGGER,
-					RECOVERABLE,
-					logger_thread_error
-				);
-			}
-		}
-		if (STOP_REQUEST == 1) {
-			goto custom_logger_thread_exit;
-		}
 	} // while
 
 	return(ESRV_SUCCESS);
@@ -600,130 +723,14 @@ ESRV_API unsigned int __stdcall custom_logger_thread(void* px) {
 	INPUT_END_EXCEPTIONS_HANDLING(p)
 
 custom_logger_thread_exit:
+	//-------------------------------------------------------------------------
+	// Free resources.
+	//-------------------------------------------------------------------------
+	if (h_log_window_info != NULL) {
+		CloseHandle(h_log_window_info);
+		h_log_window_info = NULL;
+	}
 	return(ESRV_FAILURE);
-}
-
-
-/*-----------------------------------------------------------------------------
-Function: map_desktop
-Purpose : map the desktop.
-In      : none.
-Out     : updated input data.
-Return  : status.
------------------------------------------------------------------------------*/
-unsigned int __stdcall map_desktop(PINTEL_MODELER_INPUT_TABLE p) {
-	//-------------------------------------------------------------------------
-	// Important variables.
-	//-------------------------------------------------------------------------
-	HWND topWindow = GetTopWindow(NULL); // null if fails
-
-	//iterate through z axis
-	while (topWindow != NULL) {
-		// declare the structure here and pass the address of this structure to get_window_info
-		WINDOWS_STRUCTURE windows_struct = { 0 };
-		windows_struct.foregroundWindow = topWindow;
-		get_window_info(&windows_struct);
-
-		if (!windows_struct.isOcculted) {
-			// do the logging in a logger thread with critical section
-			// signal the logger thread using another event -- h_log_window_info
-			// critical section to protect access to that data
-			// allocate and reallocate the memory manually for the queue
-			// logic of logger: log until the log signal queue is empty 
-			// signal is auto-reset. 
-
-			if (h_log_window_info != NULL) {
-				(void)SetEvent(h_log_window_info);
-			}
-
-			//---------------------------------------------------------------------
-			// Trigger a log.
-			//---------------------------------------------------------------------
-			LOG_INPUT_VALUES;
-		}
-
-		// get next window
-		topWindow = GetNextWindow(topWindow, GW_HWNDNEXT);
-	}
-
-	return(ESRV_SUCCESS);
-}
-
-/*-----------------------------------------------------------------------------
-Function: get_window_info
-Purpose : measure and and store window data.
-In      : none.
-Out     : updated input data.
-Return  : status.
------------------------------------------------------------------------------*/
-get_window_info(WINDOWS_STRUCTURE * windows_struct) {
-
-	//-------------------------------------------------------------------------
-	// Window Variables
-	//-------------------------------------------------------------------------
-	windows_struct->isVisible = IsWindowVisible(windows_struct->foregroundWindow);
-	windows_struct->isMinimized = IsIconic(windows_struct->foregroundWindow);
-
-	LPTSTR* windowTitle;
-	RECT windowRect, clientRect, topRect, subtracted;
-	WINDOWPLACEMENT wp;
-	LPMONITORINFO monitorInfo;
-
-	//-------------------------------------------------------------------------
-	// Exception handling section begin.
-	//-------------------------------------------------------------------------
-	INPUT_BEGIN_EXCEPTIONS_HANDLING
-
-	//-------------------------------------------------------------------------
-	// Gather Window Info
-	//-------------------------------------------------------------------------
-	if (windows_struct->isVisible) {
-		* windows_struct->executable = get_process_image_name(windows_struct->foregroundWindow);
-
-		GetClassName(windows_struct->foregroundWindow, windowTitle, STRING_BUFFERS_SIZE);
-		* windows_struct->className = windowTitle;
-
-		windows_struct->parentWindow = GetTopWindow(windows_struct->foregroundWindow);
-		windows_struct->shellWindow = GetShellWindow();
-		windows_struct->desktopWindow = GetDesktopWindow();
-		windows_struct->foregroundWindow = GetForegroundWindow();
-		windows_struct->nextWindow = GetNextWindow(windows_struct->foregroundWindow, GW_HWNDNEXT);
-		windows_struct->prevWindow = GetNextWindow(windows_struct->foregroundWindow, GW_HWNDPREV);
-
-		GetWindowPlacement(windows_struct->foregroundWindow, &wp);
-		windows_struct->placement = wp;
-
-		GetWindowsRect(windows_struct->foregroundWindow, windowRect);
-		windows_struct->windowRect = windowRect;
-
-		GetClientRect(windows_struct->foregroundWindow, &clientRect);
-		windows_struct->clientRect = clientRect;
-
-		GetWindowsRect(windows_struct->prevWindow, topRect);
-
-		if (SubtractRect(&subtracted, &topRect, &windowRect)) {
-			if (subtracted.left + subtracted.right + subtracted.top + subtracted.bottom > 0) {
-				windows_struct->isOcculted = TRUE;
-			}
-			else {
-				windows_struct->isOcculted = FALSE;
-			}
-		}
-		
-		windows_struct->style = GetWindowLongPtrA(windows_struct->foregroundWindow, GWL_STYLE);
-		windows_struct->style_ex = GetWindowLongPtrA(windows_struct->foregroundWindow, GWL_EXSTYLE);
-		windows_struct->isHung = IsHungAppWindow(windows_struct->foregroundWindow);
-		windows_struct->isZoomed = IsZoomed(windows_struct->foregroundWindow);
-		windows_struct->isZoomed = IsZoomed(windows_struct->foregroundWindow);
-		windows_struct->isWindowUnicode = IsWindowUnicode(windows_struct->foregroundWindow);
-		windows_struct->monitor = MonitorFromWindow(windows_struct->foregroundWindow, MONITOR_DEFAULTTOPRIMARY);
-		
-		GetMonitorInfo(windows_struct->monitor, &monitorInfo);
-		windows_struct->monitorInfo = monitorInfo;
-	}
-
-	return(TRUE);
-}
 }
 
 /*-----------------------------------------------------------------------------
@@ -733,62 +740,12 @@ In      : PINTEL_MODELER_INPUT_TABLE p
 Out     : ESRV_STATUS.
 Return  : status.
 -----------------------------------------------------------------------------*/
-ESRV_STATUS multiplex_logging(PINTEL_MODELER_INPUT_TABLE p) {
+ESRV_API unsigned int __stdcall multiplex_logging(PINTEL_MODELER_INPUT_TABLE p) {
+
+	//---------------------------------------------------------------------
+	// Trigger a log.
+	//---------------------------------------------------------------------
+	LOG_INPUT_VALUES;
+
 	RETURN(ESRV_SUCCESS);
-}
-
-
-/*-----------------------------------------------------------------------------
-Function: get_process_image_name
-Purpose : get the name of the open process (executable).
-In      : HWND window.
-Out     : updated input data.
-Return  : status.
------------------------------------------------------------------------------*/
-TCHAR get_process_image_name(HWND window) {
-
-	//-------------------------------------------------------------------------
-	// Local Variables
-	//-------------------------------------------------------------------------
-	TCHAR procPath[MAX_PATH];
-	TCHAR* token = 0;
-	TCHAR* executable = 0;
-	HANDLE openProc = NULL;
-
-	// obtains parent id and just copies that to child 
-	windowinfo info = { 0 };
-	(void)GetWindowThreadProcessId(window, &info.ownerpid);
-	info.childpid = info.ownerpid;
-
-	// Find true exe
-	(void)EnumChildWindows(window, EnumChildWindowsCallback, (LPARAM)&info);
-
-	// Get executable process handle
-	openProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, info.childpid);
-
-	// in the case where openProc is not null
-	if (openProc) {
-		// Get path to executable
-		(void)GetProcessImageFileName(openProc, procPath, MAX_PATH);
-
-		// start with the first token
-		executable = _tcstok(procPath, s);
-
-		// walking through other tokens 
-		while (executable != NULL) {
-			// retrieves current token
-			token = _tcstok(NULL, s);
-
-			// if current token is not null, we want to assign it to the variable we are outputting
-			if (token != NULL) {
-				executable = token;
-			}
-			// in this case, we are done iterating so we break out of the loop
-			else {
-				break;
-			}
-		}
-
-		return(executable);
-	}
 }

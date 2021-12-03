@@ -33,6 +33,27 @@ extern "C" {
 #endif // __cplusplus
 /*--------------------------------------------------------------------------*/
 
+//-----------------------------------------------------------------------------
+// Child Windows Struct & Callback Function
+//-----------------------------------------------------------------------------
+typedef struct {
+	DWORD ownerpid;
+	DWORD childpid;
+} windowinfo;
+
+BOOL CALLBACK EnumChildWindowsCallback(HWND hWnd, LPARAM lp) {
+	windowinfo* info = (windowinfo*)lp;
+	DWORD pid = 0;
+	GetWindowThreadProcessId(hWnd, &pid);
+	if (pid != info->ownerpid) info->childpid = pid;
+	return TRUE;
+}
+
+//-----------------------------------------------------------------------------
+// Global variables.
+//-----------------------------------------------------------------------------
+// string pattern to split by
+const wchar_t s[3] = L"\\";
 
 //-----------------------------------------------------------------------------
 // Defines.
@@ -130,8 +151,13 @@ ESRV_STATUS modeler_listen_inputs(PINTEL_MODELER_INPUT_TABLE);
 ESRV_STATUS modeler_process_dctl(PINTEL_MODELER_INPUT_TABLE);
 ESRV_STATUS modeler_process_lctl(PINTEL_MODELER_INPUT_TABLE);
 //-----------------------------------------------------------------------------
-ESRV_API unsigned int __stdcall custom_foreground_thread(void*);
-ESRV_API unsigned int __stdcall mouse_messages_loop(void*);
+ESRV_API unsigned int __stdcall custom_desktop_thread(void*);
+ESRV_API unsigned int __stdcall custom_logger_thread(void*);
+ESRV_API unsigned int __stdcall map_desktop(PINTEL_MODELER_INPUT_TABLE);
+ESRV_API unsigned int __stdcall get_window_info(WINDOWS_STRUCTURE*);
+ESRV_API unsigned int __stdcall multiplex_logging(PINTEL_MODELER_INPUT_TABLE);
+TCHAR get_process_image_name(HWND);
+
 /*--------------------------------------------------------------------------*/
 #ifdef __cplusplus
 }
