@@ -66,7 +66,7 @@ typedef struct _windows_structure {
 	HMONITOR monitor;
 	LPMONITORINFO monitorInfo;
 } WINDOWS_STRUCTURE, * PWINDOWS_STRUCTURE;
-WINDOWS_STRUCTURE windows_struct = {0};
+WINDOWS_STRUCTURE desktop[MAX_WINDOWS];
 
 //-----------------------------------------------------------------------------
 // Global variables.
@@ -255,6 +255,28 @@ ESRV_API ESRV_STATUS modeler_close_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	
 	assert(p != NULL);
 
+	//-------------------------------------------------------------------------
+	// Free resources.
+	//-------------------------------------------------------------------------
+	if (h_foreground_window_changed != NULL) {
+		CloseHandle(h_foreground_window_changed);
+		h_foreground_window_changed = NULL;
+	}
+
+	if (h_log_window_info != NULL) {
+		CloseHandle(h_log_window_info);
+		h_log_window_info = NULL;
+	}
+
+	// free memory
+
+	// check if not already deleted with global variable flag
+	// if pointer is not null
+	if (&cs != NULL) {
+		// set pointer to NULL
+		DeleteCriticalSection(&cs);
+	}
+	
 	return(ESRV_SUCCESS);
 
 	//-------------------------------------------------------------------------
@@ -476,13 +498,18 @@ unsigned int __stdcall map_desktop(PINTEL_MODELER_INPUT_TABLE p) {
 	//-------------------------------------------------------------------------
 	// Important variables.
 	//-------------------------------------------------------------------------
+	WINDOWS_STRUCTURE windows_struct = { 0 };
 	HWND topWindow = GetTopWindow(NULL); // null if fails
+	int counter = 0;
 
 	//iterate through z axis
 	while (topWindow != NULL) {
 		// declare the structure here and pass the address of this structure to get_window_info
 		windows_struct.foregroundWindow = topWindow;
+
+		EnterCriticalSection(&cs);
 		get_window_info(&windows_struct);
+		LeaveCriticalSection(&cs);
 
 		if (!windows_struct.isOcculted) {
 			// do the logging in a logger thread with critical section
@@ -492,15 +519,20 @@ unsigned int __stdcall map_desktop(PINTEL_MODELER_INPUT_TABLE p) {
 			// logic of logger: log until the log signal queue is empty 
 			// signal is auto-reset. 
 
-			if (h_log_window_info != NULL) {
-				(void)SetEvent(h_log_window_info);
-			}
+			// Instead of single structure in one window, accumulate data on multiple windows in one structure and log that 
+			desktop[counter] = windows_struct;
+			counter++;
 		}
 
 		// get next window
 		topWindow = GetNextWindow(topWindow, GW_HWNDNEXT);
 	}
 
+	// Have a collection of windows and then log after loop 
+	if (h_log_window_info != NULL) {
+		(void)SetEvent(h_log_window_info);
+	}
+	
 	return(ESRV_SUCCESS);
 }
 
@@ -686,6 +718,55 @@ unsigned int __stdcall custom_logger_thread(void* px) {
 	}
 	p = (PINTEL_MODELER_INPUT_TABLE)px;
 
+	/*-------------------------------------------------------------------------
+	 Check if logger is MPlex capable.
+	-------------------------------------------------------------------------*/
+logger_thread_check_logger_mplex_support:
+	if (IS_MULTIPLEX_LOG_SUPPORTED == 0) {
+		if (check_counts++ < MAX_MPLEX_LOGGER_CHECKS) {
+			dwret = WaitForSingleObject(
+				STOP_SIGNAL,
+				WAIT_FOR_MULTIPLEX_LOGGER_TIME_IN_MS
+			);
+			switch (dwret) {
+			case WAIT_OBJECT_0: // leave!
+				goto custom_logger_thread_exit;
+				break;
+			case WAIT_TIMEOUT:
+				goto logger_thread_check_logger_mplex_support;
+				break; // wait again
+			}
+			if (STOP_REQUEST == 1) {
+				goto custom_logger_thread_exit;
+			}
+		}
+	}
+
+	//-------------------------------------------------------------------------
+	// Check if MPlex logger is running.
+	//-------------------------------------------------------------------------
+	check_counts = 0;
+logger_thread_check_logger:
+	if (IS_MULTIPLEX_LOG_RUNNING == 0) {
+		if (check_counts++ < MAX_MPLEX_LOGGER_CHECKS) {
+			dwret = WaitForSingleObject(
+				STOP_SIGNAL,
+				WAIT_FOR_MULTIPLEX_LOGGER_TIME_IN_MS
+			);
+			switch (dwret) {
+			case WAIT_OBJECT_0: // leave!
+				goto custom_logger_thread_exit;
+				break;
+			case WAIT_TIMEOUT:
+				goto logger_thread_check_logger;
+				break; // wait again
+			}
+			if (STOP_REQUEST == 1) {
+				goto custom_logger_thread_exit;
+			}
+		}
+	}
+
 	//-------------------------------------------------------------------------
 	// Setup wait variables.
 	//-------------------------------------------------------------------------
@@ -754,29 +835,12 @@ Out     : ESRV_STATUS.
 Return  : status.
 -----------------------------------------------------------------------------*/
 unsigned int __stdcall multiplex_logging(PINTEL_MODELER_INPUT_TABLE p) {
-
-	TCHAR* executable[STRING_BUFFERS_SIZE]; //1024 bytes
-	TCHAR* className[STRING_BUFFERS_SIZE];
-	HWND window;
-	HWND nextWindow;
-	HWND prevWindow;
-	HWND parentWindow;
-	HWND shellWindow;
-	HWND desktopWindow;
-	HWND foregroundWindow;
-	BOOL isOcculted;
-	BOOL isVisible;
-	BOOL isMinimized;
-	BOOL isHung;
-	BOOL isZoomed;
-	BOOL isWindowUnicode;
-	RECT windowRect;
-	RECT clientRect;
-	WINDOWPLACEMENT placement;
-	LONG style;
-	LONG style_ex;
-	HMONITOR monitor;
-	LPMONITORINFO monitorInfo;
+	DWORD dwret = 0;
+	DWORD check_counts = 0;
+	DWORD retries_count = 0;
+	
+	MULTIPLEX_LOG_SATUS lret = MULTIPLEX_LOG_OK;
+	ERROR_STATUS eret = ERROR_FAILURE;
 
 	SET_INPUT_UNICODE_STRING_ADDRESS(
 		INPUT_EXECUTABLE,
@@ -898,11 +962,65 @@ unsigned int __stdcall multiplex_logging(PINTEL_MODELER_INPUT_TABLE p) {
 		windows_struct.monitorInfo
 	);
 
-	//---------------------------------------------------------------------
-	// Trigger a log.
-	//---------------------------------------------------------------------
-	LOG_INPUT_VALUES;
+	//-------------------------------------------------------------
+	// Un-mask inputs.
+	//-------------------------------------------------------------
+	for (int i = 0; i < INPUT_COUNT; i++) {
+		SET_INPUT_AS_LOGGED(i);
+	}
 
-	
-	return(ESRV_SUCCESS);
+	/*char* my_input_close_error_strings[] = {
+		MY_INPUT_CLOSE_ERROR_STRINGS
+	};*/
+	/*ERROR_MACROS_VARIABLES(p);*/
+
+	//static int f_masked = 1;
+	//static unsigned long long int calls_count = 0;
+	//if ((calls_count++ % 10) == 0) {
+	//	for (int i = 0; i < INPUT_COUNT; i++) {
+	//		SET_INPUT_AS_LOGGED(i); // unmask (each input)
+	//	}
+	//	f_masked = 0;
+	//	set_window_input_data(p); 
+	//}
+
+	//else {
+	//	if (f_masked == 0) {
+	//		for (int i = 0; i < INPUT_COUNT; i++) {
+	//			SET_INPUT_AS_NOT_LOGGED(i); // mask (each input)
+	//		} // for i (each input)
+	//		f_masked = 1;
+	//	}
+	//}
+	//printf("lower");
+
+	//-------------------------------------------------------------
+	// Log window data.
+	//-------------------------------------------------------------
+	DWORD retries_count = 0;
+
+retry_log_window:
+	SET_DATA_READY;
+	lret = LOG_INPUT_VALUES;
+	switch (lret) {
+	case MULTIPLEX_LOG_OK:
+		break;
+	case MULTIPLEX_LOG_BUSY:
+	case MULTIPLEX_LOG_FAILED:
+	case MULTIPLEX_LOG_BUFFER_FULL:
+		if (retries_count < LOGGER_MAX_LOG_TRIES) {
+			retries_count++;
+			Sleep(LOG_RETRY_PAUSE_IN_MS);
+			goto retry_log_window;
+		}
+
+		break;
+		//case MULTIPLEX_LOG_OUT_OF_MEMORY:
+		//	goto logger_thread_error;
+	default:
+		;
+	} // switch
+
+custom_logger_thread_exit:
+	return ESRV_FAILURE;
 }

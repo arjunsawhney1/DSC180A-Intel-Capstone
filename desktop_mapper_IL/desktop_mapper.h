@@ -56,6 +56,7 @@ BOOL CALLBACK EnumChildWindowsCallback(HWND hWnd, LPARAM lp) {
 //-----------------------------------------------------------------------------
 #define STRING_BUFFERS_SIZE 1024
 #define MAX_MPLEX_LOGGER_CHECKS 10
+#define MAX_WINDOWS 10
 #define WAIT_FOR_MULTIPLEX_LOGGER_TIME_IN_MS 1000
 #define INPUT_PAUSE_IN_MS 1000 // does not accept floating point
 #define INPUT_COUNT 26
@@ -115,6 +116,13 @@ BOOL CALLBACK EnumChildWindowsCallback(HWND hWnd, LPARAM lp) {
 	"Window Placement", \
 	"Window Monitor", \
 	"Window Monitor Info", \
+
+
+#define MY_INPUT_CLOSE_ERROR_STRINGS \
+	"Dynamic Error 1"
+
+#define LOGGER_MAX_LOG_TRIES 10
+#define LOG_RETRY_PAUSE_IN_MS 100
 
 #define INPUT_TYPES \
 	STRING_COUNTER, \
