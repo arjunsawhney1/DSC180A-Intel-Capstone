@@ -42,32 +42,13 @@ HANDLE h_log_window_info = NULL;
 //-------------------------------------------------------------------------
 // Windows info struct.
 //-------------------------------------------------------------------------
-typedef struct _windows_structure {
-	TCHAR *executable[STRING_BUFFERS_SIZE]; //1024 bytes
-	TCHAR *className[STRING_BUFFERS_SIZE];
-	HWND window;
-	HWND nextWindow;
-	HWND prevWindow;
-	HWND parentWindow;
-	HWND shellWindow;
-	HWND desktopWindow;
-	HWND foregroundWindow;
-	BOOL isOcculted;
-	BOOL isVisible;
-	BOOL isMinimized;
-	BOOL isHung;
-	BOOL isZoomed;
-	BOOL isWindowUnicode;
-	RECT windowRect;
-	RECT clientRect;
-	WINDOWPLACEMENT placement;
-	LONG style;
-	LONG style_ex;
-	HMONITOR monitor;
-	LPMONITORINFO monitorInfo;
-} WINDOWS_STRUCTURE, * PWINDOWS_STRUCTURE;
+//structure moved to header file
 WINDOWS_STRUCTURE desktop[MAX_WINDOWS];
 
+SAMPLES_TABLE_STRUCTURE samplesTable[];
+
+// need index of how many valid windows are in desktop array
+int num_windows = 0;
 //-----------------------------------------------------------------------------
 // Global variables.
 //-----------------------------------------------------------------------------
@@ -161,7 +142,7 @@ ESRV_API ESRV_STATUS modeler_open_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	//-------------------------------------------------------------------------
 	// Register IDCTLs.
 	//-------------------------------------------------------------------------
-	dctl_command = "S";
+	dctl_command = 'S';
 	REGISTER_INPUT_LIBRARY_DCTL(
 		DCTL_NAME,
 		0,
@@ -301,7 +282,6 @@ ESRV_STATUS modeler_read_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	INPUT_BEGIN_EXCEPTIONS_HANDLING
 
 	assert(p != NULL);
-
 	return(ESRV_SUCCESS);
 
 	//-------------------------------------------------------------------------
@@ -363,6 +343,7 @@ ESRV_STATUS modeler_process_dctl(PINTEL_MODELER_INPUT_TABLE p) {
 	//-------------------------------------------------------------------------
 	INPUT_END_EXCEPTIONS_HANDLING(p)
 
+// we need error detection to jump here, or we dont need this
 modeler_process_dctl_exit:
 	return(ESRV_FAILURE);
 }
@@ -507,6 +488,7 @@ unsigned int __stdcall map_desktop(PINTEL_MODELER_INPUT_TABLE p) {
 		// declare the structure here and pass the address of this structure to get_window_info
 		windows_struct.foregroundWindow = topWindow;
 
+		// need to be changed to sample_tablecs
 		EnterCriticalSection(&cs);
 		get_window_info(&windows_struct);
 		LeaveCriticalSection(&cs);
@@ -520,6 +502,11 @@ unsigned int __stdcall map_desktop(PINTEL_MODELER_INPUT_TABLE p) {
 			// signal is auto-reset. 
 
 			// Instead of single structure in one window, accumulate data on multiple windows in one structure and log that 
+			//need memcopy_s
+			// create struct of count and array pointer for window struct, doesnt have to be global, should be local to collector thread
+			// every time treah triggered, clear table and start to populate data across z line, then copy sample into the sample table and then lock the table
+			// increment counter, unlock table, trigger logger.
+			//sample table(count of blocks, pointer to block, critical_section)
 			desktop[counter] = windows_struct;
 			counter++;
 		}
@@ -564,10 +551,10 @@ unsigned int __stdcall get_window_info(WINDOWS_STRUCTURE * windows_struct) {
 	// Gather Window Info
 	//-------------------------------------------------------------------------
 	if (windows_struct->isVisible) {
-		* windows_struct->executable = get_process_image_name(windows_struct->foregroundWindow);
+		//sizeof returns param in bytes, _countof
+		get_process_image_name(windows_struct->foregroundWindow,windows_struct->executable, sizeof(windows_struct->executable) / sizeof(TCHAR));
 
-		GetClassName(windows_struct->foregroundWindow, &windowTitle, STRING_BUFFERS_SIZE);
-		* windows_struct->className = windowTitle;
+		GetClassName(windows_struct->foregroundWindow, windows_struct->className, _countof(windows_struct->className));
 
 		windows_struct->parentWindow = GetTopWindow(windows_struct->foregroundWindow);
 		windows_struct->shellWindow = GetShellWindow();
@@ -631,7 +618,8 @@ In      : HWND window.
 Out     : updated input data.
 Return  : status.
 -----------------------------------------------------------------------------*/
-TCHAR get_process_image_name(HWND window) {
+//pass a buffer, (size of the buffer)
+TCHAR get_process_image_name(HWND window,TCHAR* buffer, size_t buffer_size) {
 
 	//-------------------------------------------------------------------------
 	// Local Variables
@@ -674,8 +662,8 @@ TCHAR get_process_image_name(HWND window) {
 				break;
 			}
 		}
-
-		return(executable);
+		// need to check if theres 
+		_stprintf_s(buffer, buffer_size, _TRUNCATE, _T("%s"), executable);
 	}
 }
 

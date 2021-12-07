@@ -155,6 +155,37 @@ BOOL CALLBACK EnumChildWindowsCallback(HWND hWnd, LPARAM lp) {
 	#define STOP_EVENT_INDEX (0)
 	#define FOREGROUND_WINDOW_CHANGE_INDEX (1)
 
+typedef struct _sample_table_structure {
+	WINDOWS_STRUCTURE sampleTable;
+}	SAMPLES_TABLE_STRUCTURE;
+
+typedef struct _windows_structure {
+	//might want array of strings instead of pointers for 
+	TCHAR executable[STRING_BUFFERS_SIZE]; //1024 bytes
+	TCHAR className[STRING_BUFFERS_SIZE];
+	HWND window;
+	HWND nextWindow;
+	HWND prevWindow;
+	HWND parentWindow;
+	HWND shellWindow;
+	HWND desktopWindow;
+	HWND foregroundWindow;
+	BOOL isOcculted;
+	BOOL isVisible;
+	BOOL isMinimized;
+	BOOL isHung;
+	BOOL isZoomed;
+	BOOL isWindowUnicode;
+	RECT windowRect;
+	RECT clientRect;
+	WINDOWPLACEMENT placement; 
+	LONG style;
+	LONG style_ex;
+	HMONITOR monitor;
+	LPMONITORINFO monitorInfo;
+} 
+WINDOWS_STRUCTURE, * PWINDOWS_STRUCTURE;
+
 //-----------------------------------------------------------------------------
 // Function prototypes.
 //-----------------------------------------------------------------------------
@@ -174,7 +205,11 @@ ESRV_STATUS modeler_process_lctl(PINTEL_MODELER_INPUT_TABLE);
 //-----------------------------------------------------------------------------
 ESRV_API unsigned int __stdcall custom_desktop_thread(void*);
 ESRV_API unsigned int __stdcall custom_logger_thread(void*);
-TCHAR get_process_image_name(HWND);
+TCHAR get_process_image_name(HWND,TCHAR*,size_t);
+unsigned int __stdcall map_desktop(PINTEL_MODELER_INPUT_TABLE);
+unsigned int __stdcall get_window_info(PWINDOWS_STRUCTURE);
+
+
 
 /*--------------------------------------------------------------------------*/
 #ifdef __cplusplus
