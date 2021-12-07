@@ -31,21 +31,11 @@ extern "C" {
 /*--------------------------------------------------------------------------*/
 
 //-----------------------------------------------------------------------------
-// Global variable.
-//-----------------------------------------------------------------------------
-DCTL_COMMAND dctl_command;
-DCTL_COMMAND_DATA dctl_command_argument[
-	ESRV_COMMAND_OPTION_LENGTH
-] = { 0 };
-
-//-----------------------------------------------------------------------------
 // DCTL Defines.
 //-----------------------------------------------------------------------------
-
 #define DCTL_ARGUMENTS_SIZE \
 	(20)
 
-#define DCTL_NAME "WINDOW-CHANGED"
 #define DCTL_CUSTOM_TOKEN "FOREGROUND-WINDOW-CHANGED"
 
 #define DCTL_ARGUMENTS_SIZE \
@@ -53,3 +43,11 @@ DCTL_COMMAND_DATA dctl_command_argument[
 
 #define BUFFER_SIZE \
 	(64)
+
+//-----------------------------------------------------------------------------
+// Global variable.
+//-----------------------------------------------------------------------------
+	DCTL_COMMAND dctl_command;
+	DCTL_COMMAND_DATA dctl_command_argument[
+		DCTL_ARGUMENTS_SIZE
+	] = { 0 };

@@ -33,15 +33,33 @@ extern "C" {
 #endif // __cplusplus
 /*--------------------------------------------------------------------------*/
 
+//-----------------------------------------------------------------------------
+// Child Windows Struct & Callback Function
+//-----------------------------------------------------------------------------
+typedef struct {
+	DWORD ownerpid;
+	DWORD childpid;
+} windowinfo;
+
+BOOL CALLBACK EnumChildWindowsCallback(HWND hWnd, LPARAM lp) {
+	windowinfo* info = (windowinfo*)lp;
+	DWORD pid = 0;
+	GetWindowThreadProcessId(hWnd, &pid);
+	if (pid != info->ownerpid) info->childpid = pid;
+	return TRUE;
+}
+
+
 
 //-----------------------------------------------------------------------------
 // Defines.
 //-----------------------------------------------------------------------------
 #define STRING_BUFFERS_SIZE 1024
 #define MAX_MPLEX_LOGGER_CHECKS 10
+#define MAX_WINDOWS 10
 #define WAIT_FOR_MULTIPLEX_LOGGER_TIME_IN_MS 1000
 #define INPUT_PAUSE_IN_MS 1000 // does not accept floating point
-#define INPUT_COUNT 20
+#define INPUT_COUNT 26
 	#define INPUT_EXECUTABLE 0
 	#define INPUT_WINDOW_TITLE 1
 	#define INPUT_NEXT_WINDOW 2
@@ -55,13 +73,19 @@ extern "C" {
 	#define INPUT_IS_VISIBLE 10
 	#define INPUT_IS_MINIMIZED 11
 	#define INPUT_IS_WINDOW_UNICODE 12
-	#define INPUT_WINDOW_RECT 13
-	#define INPUT_CLIENT_WINDOW_RECT 14
-	#define INPUT_WINDOW_STYLE 15
-	#define INPUT_WINDOW_STYLE_EX 16
-	#define INPUT_WINDOW_PLACEMENT 17
-	#define INPUT_WINDOW_MONITOR 18
-	#define INPUT_MONITOR_INFO 19
+	#define INPUT_WINDOW_RECT_LEFT 13
+	#define INPUT_WINDOW_RECT_RIGHT 14
+	#define INPUT_WINDOW_RECT_TOP 15
+	#define INPUT_WINDOW_RECT_BOTTOM 16
+	#define INPUT_CLIENT_WINDOW_RECT_LEFT 17
+	#define INPUT_CLIENT_WINDOW_RECT_RIGHT 18
+	#define INPUT_CLIENT_WINDOW_RECT_TOP 19
+	#define INPUT_CLIENT_WINDOW_RECT_BOTTOM 20
+	#define INPUT_WINDOW_STYLE 21
+	#define INPUT_WINDOW_STYLE_EX 22
+	#define INPUT_WINDOW_PLACEMENT 23
+	#define INPUT_WINDOW_MONITOR 24
+	#define INPUT_MONITOR_INFO 25
 
 #define INPUT_NAME_STRING "DESKTOP-MAPPER"
 
@@ -79,13 +103,26 @@ extern "C" {
 	"Window is Visible", \
 	"Window is Minimized", \
 	"Window is Unicode", \
-	"Window Rectangle", \
-	"Client Window Rectangle", \
+	"Window Rectangle Left", \
+	"Window Rectangle Right", \
+	"Window Rectangle Top", \
+	"Window Rectangle Bottom", \
+	"Client Window Rectangle Left", \
+	"Client Window Rectangle Right", \
+	"Client Window Rectangle Top", \
+	"Client Window Rectangle Bottom", \
 	"Window Style", \
 	"Window Style Ex", \
 	"Window Placement", \
 	"Window Monitor", \
 	"Window Monitor Info", \
+
+
+#define MY_INPUT_CLOSE_ERROR_STRINGS \
+	"Dynamic Error 1"
+
+#define LOGGER_MAX_LOG_TRIES 10
+#define LOG_RETRY_PAUSE_IN_MS 100
 
 #define INPUT_TYPES \
 	STRING_COUNTER, \
@@ -96,6 +133,11 @@ extern "C" {
 	STRING_COUNTER, \
 	STRING_COUNTER, \
 	STRING_COUNTER, \
+	ULL_COUNTER, \
+	ULL_COUNTER, \
+	ULL_COUNTER, \
+	ULL_COUNTER, \
+	ULL_COUNTER, \
 	ULL_COUNTER, \
 	ULL_COUNTER, \
 	ULL_COUNTER, \
@@ -130,8 +172,10 @@ ESRV_STATUS modeler_listen_inputs(PINTEL_MODELER_INPUT_TABLE);
 ESRV_STATUS modeler_process_dctl(PINTEL_MODELER_INPUT_TABLE);
 ESRV_STATUS modeler_process_lctl(PINTEL_MODELER_INPUT_TABLE);
 //-----------------------------------------------------------------------------
-ESRV_API unsigned int __stdcall custom_foreground_thread(void*);
-ESRV_API unsigned int __stdcall mouse_messages_loop(void*);
+ESRV_API unsigned int __stdcall custom_desktop_thread(void*);
+ESRV_API unsigned int __stdcall custom_logger_thread(void*);
+TCHAR get_process_image_name(HWND);
+
 /*--------------------------------------------------------------------------*/
 #ifdef __cplusplus
 }
