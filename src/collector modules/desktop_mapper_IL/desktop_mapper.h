@@ -38,54 +38,26 @@ extern "C" {
 //-----------------------------------------------------------------------------
 #define STRING_BUFFERS_SIZE 1024
 #define INPUT_PAUSE_IN_MS 1000 // does not accept floating point
-#define INPUT_COUNT 4
-#define INPUT_EXECUTABLE 0
-#define INPUT_IS_IMMERSIVE 1
-#define INPUT_IS_HUNG 2
-#define INPUT_BUFFER_SIZE 3
+#define INPUT_COUNT 3
+	#define INPUT_EXECUTABLE 0
+	#define INPUT_IS_IMMERSIVE 1
+	#define INPUT_IS_HUNG 2
+
 #define INPUT_NAME_STRING "FOREGROUND-WINDOW"
 
 #define INPUT_DESCRIPTION_STRINGS \
 	"Executable Name", \
 	"Window is Immersive", \
 	"Window is Hung", \
-	"Buffer Size"
 
 #define INPUT_TYPES \
 	STRING_COUNTER, \
 	ULL_COUNTER, \
 	ULL_COUNTER, \
-	ULL_COUNTER
 
 #define WAIT_EVENTS_COUNT (2)
 	#define STOP_EVENT_INDEX (0)
 	#define CLICK_EVENT_INDEX (1)
-
-//-----------------------------------------------------------------------------
-// Defines.
-//-----------------------------------------------------------------------------
-#define BUFFER_SIZE \
-	(64)
-
-
-//-----------------------------------------------------------------------------
-// Child Windows Struct & Callback Function
-//-----------------------------------------------------------------------------
-typedef struct {
-	DWORD ownerpid;
-	DWORD childpid;
-} windowinfo;
-
-BOOL CALLBACK EnumChildWindowsCallback(HWND hWnd, LPARAM lp) {
-	windowinfo* info = (windowinfo*)lp;
-	DWORD pid = 0;
-	GetWindowThreadProcessId(hWnd, &pid);
-	if (pid != info->ownerpid) info->childpid = pid;
-	return TRUE;
-}
-
-// string pattern to split by
-const wchar_t s[3] = L"\\";
 
 //-----------------------------------------------------------------------------
 // Function prototypes.

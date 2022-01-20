@@ -54,7 +54,7 @@ rem // Payloads' settings.
 rem //-------------------------------------------------------------------------
 set INPUT_LIBRARY_001=il='%BIN_FOLDER%\mouse_input.dll'
 set INPUT_LIBRARY_002=il='%BIN_FOLDER%\user_wait.dll'
-set INPUT_LIBRARY_003=il='%BIN_FOLDER%\foreground_window_IL.dll'
+set INPUT_LIBRARY_003=il='%BIN_FOLDER%\foreground_window.dll'
 
 
 rem  @@@@   @@@@@   @@   @@@@@   @@@@@
@@ -233,3 +233,4 @@ goto MENU
 :EXIT
 
 @echo on
+
