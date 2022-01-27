@@ -1,4 +1,44 @@
 """
+Cleans csv and outputs either a windows df OR windows and is_immersive df
+@params: data str csv path to just windows data 
+         data_imm str csv path to immersive data
+@return: df
+"""
+def clean_data(window_path, imm_path = 1):
+    data = _
+    #if immersive data is not provided
+    if imm_path == 1:
+        data = pd.read_csv(window_path)
+        #check and clean headers
+        if data.columns[0] == 'MEASUREMENT_TIME':
+            data = data.drop(['ID_INPUT','PRIVATE_DATA'],axis = 1)
+            data.columns = ['time','window']
+    #if immersive data IS provided
+    else:
+        window_data = pd.read_csv(window_path)
+        immersive_data = pd.read_csv(imm_path)
+        #check and clean headers
+        if window_data.columns[0] == 'MEASUREMENT_TIME':
+            window_data = window_data.drop(['ID_INPUT','PRIVATE_DATA'],axis = 1)
+            window_data.columns = ['time','window']
+        if immersive_data.columns[0] == 'MEASUREMENT_TIME':
+            immersive_data = immersive_data.drop(['ID_INPUT','PRIVATE_DATA'],axis = 1)
+            immersive_data.columns = ['time','is_immersive']
+            
+        data = window_data.merge(immersive_data, on = "time", how = 'left')
+        #clean is_immersive column
+        #get specific nan float value
+        is_NaN = data.isnull()
+        row_has_NaN = is_NaN.any(axis=1)
+        rows_with_NaN = data[row_has_NaN]
+        nan_value = rows_with_NaN.iloc[0,0]
+        #get rid of any number other than 0, 1 or nan value
+        data = data[data.is_immersive.isin([0,1,nan_value])]
+        
+    return data
+
+
+"""
 Splits data into train and test portions, default 80-20 split
 Training data is first train_size % of the data
 Test data is last test_size % of the data
