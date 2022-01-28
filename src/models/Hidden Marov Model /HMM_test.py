@@ -1,5 +1,6 @@
 import pandas as pd
 import math
+import numpy as np
 
 class HMM:
     def __init__(self):
