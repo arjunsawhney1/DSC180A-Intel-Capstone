@@ -128,23 +128,31 @@ class HMM:
                 nan_value = '_'
             #get rid of any number other than 0, 1 or nan value
             data = data[data.is_immersive.isin([0,1,nan_value])]
-            
+
+        #change time col into a datetime object
+        data['time'] = pd.to_datetime(data['time'])    
         return data
 
     """
-    Splits data into train and test portions, default 80-20 split
-    Training data is first train_size % of the data
-    Test data is last test_size % of the data
+    Splits data into train and test portions
+    Assumes data is already cleaned
+    Training data is all data except last recorded day's data
+    Test data is the last recorded day's data
     @params: data df to split 
-            train_size float percentage of data to be training set
-            test_size float percentage of data to be test set
     @return: 2 dfs (train and test dfs)
     """
-    def train_test_split(self,data,train_size = .8, test_size = .2):
-        len_train_data = train_size * len(data)
-        len_test_size = test_size * len(data)
-        train_data = data[:int(len_train_data)]
-        test_data = data[len(data) - int(len_test_size):]
+    def train_test_split(self,data):
+        last_month = data.iloc[-1].time.month
+        last_day = data.iloc[-1].time.day
+        #returns boolean if day matches with target date, for every column
+        def bool_day_checker(date):
+            if date.month == last_month and date.day == last_day:
+                return True
+            return False
+        last_day_data = data.loc[data.time.apply(bool_day_checker)]
+        last_index = last_day_data.index[0]
+        train_data = data.loc[:last_index - 1] #-1 since loc ending is inclusive
+        test_data = last_day_data
         return train_data, test_data
 
     """
