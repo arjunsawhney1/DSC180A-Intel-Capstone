@@ -23,7 +23,6 @@ set ROOT_FOLDER=%cd%
 set BIN_FOLDER=%ROOT_FOLDER%\Release\64
 set OUTPUTS_FOLDER=%ROOT_FOLDER%\outputs
 
-
 rem //-------------------------------------------------------------------------
 rem // Key settings.
 rem //-------------------------------------------------------------------------
@@ -54,8 +53,8 @@ rem // Payloads' settings.
 rem //-------------------------------------------------------------------------
 set INPUT_LIBRARY_001=il='%BIN_FOLDER%\mouse_input.dll'
 set INPUT_LIBRARY_002=il='%BIN_FOLDER%\user_wait.dll'
-set INPUT_LIBRARY_003=il='%BIN_FOLDER%\foreground_window.dll'
-
+set INPUT_LIBRARY_003=il='%BIN_FOLDER%\foreground_window_IL.dll'
+set INPUT_LIBRARY_004=il='%BIN_FOLDER%\desktop_mapper_IL.dll'
 
 rem  @@@@   @@@@@   @@   @@@@@   @@@@@
 rem @    @    @    @  @  @    @    @
@@ -97,6 +96,7 @@ set COMMAND="%BIN_FOLDER%\esrv.exe"^
  %INPUT_LIBRARY_001%^
  %INPUT_LIBRARY_002%^
  %INPUT_LIBRARY_003%^
+ %INPUT_LIBRARY_004%^
  ^"^
  --address %ADDRESS_IPV4%^
  --port %PORT%
@@ -233,4 +233,3 @@ goto MENU
 :EXIT
 
 @echo on
-

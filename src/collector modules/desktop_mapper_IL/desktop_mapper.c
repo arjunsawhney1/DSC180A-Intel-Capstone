@@ -112,8 +112,8 @@ ESRV_API ESRV_STATUS modeler_open_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	//-------------------------------------------------------------------------
 	// Input descriptions.
 	//-------------------------------------------------------------------------
-	static char *descriptions[INPUT_COUNT] = { 
-		INPUT_DESCRIPTION_STRINGS 
+	static char* descriptions[INPUT_COUNT] = {
+		INPUT_DESCRIPTION_STRINGS
 	};
 	static INTEL_MODELER_INPUT_TYPES types[INPUT_COUNT] = {
 		INPUT_TYPES
@@ -190,7 +190,6 @@ ESRV_API ESRV_STATUS modeler_open_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 		goto modeler_open_inputs_error;
 	}
 	//-------------------------------------------------------------------------
-	/*EnterCriticalSection();*/
 
 	h_logger_thread = (HANDLE)_beginthreadex(
 		NULL,
@@ -204,8 +203,6 @@ ESRV_API ESRV_STATUS modeler_open_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 		goto modeler_open_inputs_error;
 	}
 
-	/*LeaveCriticalSection();*/
-
 	return(ESRV_SUCCESS);
 
 	//-------------------------------------------------------------------------
@@ -214,7 +211,6 @@ ESRV_API ESRV_STATUS modeler_open_inputs(PINTEL_MODELER_INPUT_TABLE p) {
 	INPUT_END_EXCEPTIONS_HANDLING(p)
 
 modeler_open_inputs_error:
-	DeleteCriticalSection(&cs);
 	return(ESRV_FAILURE);
 }
 
@@ -346,9 +342,6 @@ ESRV_STATUS modeler_process_dctl(PINTEL_MODELER_INPUT_TABLE p) {
 	// Exception handling section end.
 	//-------------------------------------------------------------------------
 	INPUT_END_EXCEPTIONS_HANDLING(p)
-
-//modeler_process_dctl_exit:
-//	return(ESRV_FAILURE);
 }
 
 /*-----------------------------------------------------------------------------
@@ -388,18 +381,23 @@ void map_desktop() {
 	// Important variables.
 	//-------------------------------------------------------------------------
 	WINDOWS_STRUCTURE windows_struct = { 0 };
-	HWND topWindow = GetTopWindow(NULL); // null if fails
+	HWND topWindow = GetForegroundWindow();
+	HWND shellWindow = GetShellWindow();
+	HWND desktopWindow = GetDesktopWindow();
 	int counter = 0;
-	
+
 	EnterCriticalSection(&cs);
-	while ((topWindow != NULL) && (counter < MAX_WINDOWS)) {
+
+	while ((topWindow != NULL) && (topWindow != desktopWindow) && (topWindow != shellWindow) && (counter < MAX_WINDOWS)) {
 		windows_struct.currentWindow = topWindow;
 		get_window_info(&windows_struct);
+		windows_struct.index = counter;
+		GetSystemTime(&windows_struct.time);
 		memcpy_s(&desktop[counter], sizeof(WINDOWS_STRUCTURE), &windows_struct, sizeof(windows_struct));
-		
 		topWindow = GetNextWindow(topWindow, GW_HWNDNEXT);
 		counter++;
 	}
+
 	LeaveCriticalSection(&cs);
 
 	// Have a collection of windows and then log after loop 
@@ -447,9 +445,6 @@ ESRV_API unsigned int __stdcall custom_desktop_thread(void* px) {
 		goto custom_desktop_thread_exit;
 	}
 	p = (PINTEL_MODELER_INPUT_TABLE)px;
-
-
-	// create new thread that waits on stop signal for 100ms, then getforegroundwindow and store and then signal h_foreground_window_changed only if different from last
 
 	//-------------------------------------------------------------------------
 	// Setup wait variables.
@@ -529,64 +524,55 @@ ESRV_STATUS get_window_info(WINDOWS_STRUCTURE* windows_struct) {
 	//-------------------------------------------------------------------------
 	// Window Variables
 	//-------------------------------------------------------------------------
-	RECT windowRect, clientRect, topRect, subtracted;
+	RECT windowRect;
+	WINDOWPLACEMENT windowPlacement = { 0 };
 
 	//-------------------------------------------------------------------------
 	// Exception handling section begin.
 	//-------------------------------------------------------------------------
 	INPUT_BEGIN_EXCEPTIONS_HANDLING
 
-	/*windows_struct->isVisible = IsWindowVisible(windows_struct->currentWindow);
-	windows_struct->isVisible = GetWindowLong(windows_struct->currentWindow, WS_VISIBLE);*/
-	windows_struct->isVisible = 1;
-
 	//-------------------------------------------------------------------------
 	// Gather Window Info
 	//-------------------------------------------------------------------------
-	if (windows_struct->isVisible) {
-		get_process_image_name(windows_struct->foregroundWindow, windows_struct->executable, 
-			_countof(windows_struct->executable));
+	memset(windows_struct->executable, 0, sizeof(windows_struct->executable));
+	get_process_image_name(windows_struct->currentWindow, windows_struct->executable, _countof(windows_struct->executable));
+	
+	HWND nextWindow = GetNextWindow(windows_struct->currentWindow, GW_HWNDNEXT);
+	memset(windows_struct->nextWindow, 0, sizeof(windows_struct->nextWindow));
+	get_process_image_name(nextWindow, windows_struct->nextWindow, _countof(windows_struct->nextWindow));
+	
+	HWND prevWindow = GetNextWindow(windows_struct->currentWindow, GW_HWNDPREV);
+	memset(windows_struct->prevWindow, 0, sizeof(windows_struct->prevWindow));
+	get_process_image_name(prevWindow, windows_struct->prevWindow, _countof(windows_struct->prevWindow));
 
-		GetClassName(windows_struct->foregroundWindow, windows_struct->className, STRING_BUFFERS_SIZE);
+	HWND foregroundWindow = GetForegroundWindow();
+	memset(windows_struct->foregroundWindow, 0, sizeof(windows_struct->foregroundWindow));
+	get_process_image_name(foregroundWindow, windows_struct->foregroundWindow, _countof(windows_struct->foregroundWindow));
 
-		windows_struct->nextWindow = GetNextWindow(windows_struct->foregroundWindow, GW_HWNDNEXT);
-		windows_struct->prevWindow = GetNextWindow(windows_struct->foregroundWindow, GW_HWNDPREV);
-		windows_struct->foregroundWindow = GetForegroundWindow();
-		windows_struct->shellWindow = GetShellWindow();
-		windows_struct->desktopWindow = GetDesktopWindow();
+	memset(&windowRect, 0, sizeof(windowRect));
+	GetWindowRect(windows_struct->currentWindow, &windowRect);
+	memset(windows_struct->windowRect, 0, sizeof(windows_struct->windowRect));
+	_sntprintf_s(windows_struct->windowRect, _countof(windows_struct->windowRect), _TRUNCATE, _T("%ld-%ld-%ld-%ld"), windowRect.left, windowRect.right, windowRect.top, windowRect.bottom);
 
-		GetWindowPlacement(windows_struct->currentWindow, &windows_struct->placement);
+	memset(&windowPlacement, 0, sizeof(windowPlacement));
+	GetWindowPlacement(windows_struct->currentWindow, &windowPlacement);
+	memset(windows_struct->windowPlacement, 0, sizeof(windows_struct->windowPlacement));
+	_sntprintf_s(windows_struct->windowPlacement, _countof(windows_struct->windowPlacement), _TRUNCATE, _T("%ld-%ld-%ld-%ld"), windowPlacement.rcNormalPosition.left, windowPlacement.rcNormalPosition.right, windowPlacement.rcNormalPosition.top, windowPlacement.rcNormalPosition.bottom);
 
-		GetWindowRect(windows_struct->currentWindow, &windowRect);
-		windows_struct->windowRect = windowRect;
+	windows_struct->isVisible = IsWindowVisible(windows_struct->currentWindow);
+	windows_struct->isMinimized = IsIconic(windows_struct->currentWindow);
+	windows_struct->isZoomed = IsZoomed(windows_struct->currentWindow);
+	windows_struct->isHung = IsHungAppWindow(windows_struct->currentWindow);
 
-		GetClientRect(windows_struct->currentWindow, &clientRect);
-		windows_struct->clientRect = clientRect;
+	/*GetClientRect(windows_struct->currentWindow, &clientRect);
+	_sntprintf_s(windows_struct->clientRect, _countof(windows_struct->clientRect), _TRUNCATE, _T("%ld-%ld-%ld-%ld"), clientRect.left, clientRect.right, clientRect.top, clientRect.bottom);
 
-		GetWindowRect(windows_struct->prevWindow, &topRect);
+	windows_struct->style = GetWindowLongPtrA(windows_struct->currentWindow, GWL_STYLE);
+	windows_struct->style_ex = GetWindowLongPtrA(windows_struct->currentWindow, GWL_EXSTYLE);
+	windows_struct->monitor = MonitorFromWindow(windows_struct->currentWindow, MONITOR_DEFAULTTOPRIMARY);
 
-		if (SubtractRect(&subtracted, &topRect, &windowRect)) {
-			if (subtracted.left + subtracted.right + subtracted.top + subtracted.bottom > 0) {
-				windows_struct->isOcculted = TRUE;
-			}
-			else {
-				windows_struct->isOcculted = FALSE;
-			}
-		}
-		
-		windows_struct->isHung = IsHungAppWindow(windows_struct->currentWindow);
-		windows_struct->isMinimized = IsIconic(windows_struct->currentWindow);
-		windows_struct->isZoomed = IsZoomed(windows_struct->currentWindow);
-		windows_struct->isWindowUnicode = IsWindowUnicode(windows_struct->currentWindow);
-		windows_struct->style = GetWindowLongPtrA(windows_struct->currentWindow, GWL_STYLE);
-		windows_struct->style_ex = GetWindowLongPtrA(windows_struct->currentWindow, GWL_EXSTYLE);
-		
-		windows_struct->monitor = MonitorFromWindow(windows_struct->currentWindow, MONITOR_DEFAULTTOPRIMARY);
-		GetMonitorInfo(windows_struct->monitor, &windows_struct->monitorInfo);
-	}
-	else {
-		goto get_window_info_error;
-	}
+	GetMonitorInfo(windows_struct->monitor, &windows_struct->monitorInfo);*/
 
 	//-------------------------------------------------------------------------
 	// Exception handling section end.
@@ -594,9 +580,6 @@ ESRV_STATUS get_window_info(WINDOWS_STRUCTURE* windows_struct) {
 	INPUT_END_EXCEPTIONS_HANDLING(NULL)
 
 	return(ESRV_SUCCESS);
-
-get_window_info_error:
-	return(ESRV_FAILURE);
 }
 
 
@@ -612,9 +595,10 @@ void get_process_image_name(HWND window, TCHAR* buffer, DWORD size) {
 	//-------------------------------------------------------------------------
 	// Local Variables
 	//-------------------------------------------------------------------------
-	//TCHAR procPath[MAX_PATH];
-	TCHAR* executable = 0;
+	TCHAR procPath[MAX_PATH];
+	memset(procPath, 0, sizeof(procPath));
 	TCHAR* token = 0;
+	TCHAR* lastToken = 0;
 	HANDLE openProc = NULL;
 
 	// obtains parent id and just copies that to child 
@@ -631,22 +615,23 @@ void get_process_image_name(HWND window, TCHAR* buffer, DWORD size) {
 	// in the case where openProc is not null
 	if (openProc) {
 		// Get path to executable
-		(void)GetProcessImageFileName(openProc, buffer, size);
+		(void)GetProcessImageFileName(openProc, procPath, MAX_PATH);
 
 		// start with the first token
-		_tcstok(buffer, s);
+		_tcstok(procPath, s);
 
 		// walking through other tokens 
-		while (buffer != NULL) {
+		while (procPath != NULL) {
 			// retrieves current token
 			token = _tcstok(NULL, s);
 
 			// if current token is not null, we want to assign it to the variable we are outputting
 			if (token != NULL) {
-				buffer = token;
+				lastToken = token;
 			}
 			// in this case, we are done iterating so we break out of the loop
 			else {
+				_sntprintf_s(buffer, size, _TRUNCATE, _T("%s"), lastToken);
 				break;
 			}
 		}
@@ -778,7 +763,9 @@ logger_thread_check_logger:
 			// EnterCriticalSection just for extraction of address of sample
 
 			EnterCriticalSection(&cs);
+			
 			stat = multiplex_logging(p, &desktop[0]);
+			
 			LeaveCriticalSection(&cs);
 
 			// leave 
@@ -828,167 +815,107 @@ ESRV_STATUS multiplex_logging(PINTEL_MODELER_INPUT_TABLE p, WINDOWS_STRUCTURE* d
 	ERROR_STATUS eret = ERROR_FAILURE;
 
 	assert(d != NULL);
+	assert(p != NULL);
 
-	//replace with size later
+	//-------------------------------------------------------------
+	// Log and Un-mask inputs.
+	//-------------------------------------------------------------
+
 	for (int i = 0; i < MAX_WINDOWS; i++) {
-		SET_INPUT_UNICODE_STRING_ADDRESS(
-			INPUT_EXECUTABLE,
-			d[i].executable
-		);
+		SET_INPUT_UNICODE_STRING_ADDRESS(INPUT_CURR_WINDOW_EXECUTABLE,d[i].executable);
+		SET_INPUT_PRIVATE_DWORD(INPUT_CURR_WINDOW_EXECUTABLE, d[i].index);
+		SET_INPUT_UPDATE_TIME(INPUT_CURR_WINDOW_EXECUTABLE, INPUT_TIME_SYSTEMTIME, &d[i].time);
+		SET_INPUT_AS_LOGGED(INPUT_CURR_WINDOW_EXECUTABLE);
 
-		SET_INPUT_AS_LOGGED(INPUT_EXECUTABLE);
-		// set update time to data captured when window captured
-		// set private data -- z-index w/ i
+		SET_INPUT_UNICODE_STRING_ADDRESS(INPUT_PREV_WINDOW_EXECUTABLE, d[i].prevWindow);
+		SET_INPUT_PRIVATE_DWORD(INPUT_PREV_WINDOW_EXECUTABLE, d[i].index);
+		SET_INPUT_UPDATE_TIME(INPUT_PREV_WINDOW_EXECUTABLE, INPUT_TIME_SYSTEMTIME, &d[i].time);
+		SET_INPUT_AS_LOGGED(INPUT_PREV_WINDOW_EXECUTABLE);
 
+		SET_INPUT_UNICODE_STRING_ADDRESS(INPUT_NEXT_WINDOW_EXECUTABLE, d[i].nextWindow);
+		SET_INPUT_PRIVATE_DWORD(INPUT_NEXT_WINDOW_EXECUTABLE, d[i].index);
+		SET_INPUT_UPDATE_TIME(INPUT_NEXT_WINDOW_EXECUTABLE, INPUT_TIME_SYSTEMTIME, &d[i].time);
+		SET_INPUT_AS_LOGGED(INPUT_NEXT_WINDOW_EXECUTABLE);
+
+		SET_INPUT_UNICODE_STRING_ADDRESS(INPUT_FOREGROUND_WINDOW_EXECUTABLE, d[i].foregroundWindow);
+		SET_INPUT_PRIVATE_DWORD(INPUT_FOREGROUND_WINDOW_EXECUTABLE, d[i].index);
+		SET_INPUT_UPDATE_TIME(INPUT_FOREGROUND_WINDOW_EXECUTABLE, INPUT_TIME_SYSTEMTIME, &d[i].time);
+		SET_INPUT_AS_LOGGED(INPUT_FOREGROUND_WINDOW_EXECUTABLE);
+
+		SET_INPUT_UNICODE_STRING_ADDRESS(INPUT_WINDOW_RECT, d[i].windowRect);
+		SET_INPUT_PRIVATE_DWORD(INPUT_WINDOW_RECT, d[i].index);
+		SET_INPUT_UPDATE_TIME(INPUT_WINDOW_RECT, INPUT_TIME_SYSTEMTIME, &d[i].time);
+		SET_INPUT_AS_LOGGED(INPUT_WINDOW_RECT);
+
+		SET_INPUT_UNICODE_STRING_ADDRESS(INPUT_WINDOW_PLACEMENT, d[i].windowPlacement);
+		SET_INPUT_PRIVATE_DWORD(INPUT_WINDOW_PLACEMENT, d[i].index);
+		SET_INPUT_UPDATE_TIME(INPUT_WINDOW_PLACEMENT, INPUT_TIME_SYSTEMTIME, &d[i].time);
+		SET_INPUT_AS_LOGGED(INPUT_WINDOW_PLACEMENT);
+
+		SET_INPUT_ULL_VALUE(INPUT_IS_VISIBLE, d[i].isVisible);
+		SET_INPUT_PRIVATE_DWORD(INPUT_IS_VISIBLE, d[i].index);
+		SET_INPUT_UPDATE_TIME(INPUT_IS_VISIBLE, INPUT_TIME_SYSTEMTIME, &d[i].time);
+		SET_INPUT_AS_LOGGED(INPUT_IS_VISIBLE);
+
+		SET_INPUT_ULL_VALUE(INPUT_IS_MINIMIZED, d[i].isMinimized);
+		SET_INPUT_PRIVATE_DWORD(INPUT_IS_MINIMIZED, d[i].index);
+		SET_INPUT_UPDATE_TIME(INPUT_IS_MINIMIZED, INPUT_TIME_SYSTEMTIME, &d[i].time);
+		SET_INPUT_AS_LOGGED(INPUT_IS_MINIMIZED);
+
+		SET_INPUT_ULL_VALUE(INPUT_IS_MAXIMIZED, d[i].isZoomed);
+		SET_INPUT_PRIVATE_DWORD(INPUT_IS_MAXIMIZED, d[i].index);
+		SET_INPUT_UPDATE_TIME(INPUT_IS_MAXIMIZED, INPUT_TIME_SYSTEMTIME, &d[i].time);
+		SET_INPUT_AS_LOGGED(INPUT_IS_MAXIMIZED);
+
+		SET_INPUT_ULL_VALUE(INPUT_IS_HUNG, d[i].isHung);
+		SET_INPUT_PRIVATE_DWORD(INPUT_IS_HUNG, d[i].index);
+		SET_INPUT_UPDATE_TIME(INPUT_IS_HUNG, INPUT_TIME_SYSTEMTIME, &d[i].time);
+		SET_INPUT_AS_LOGGED(INPUT_IS_HUNG);
 	}
 
-	//SET_INPUT_UNICODE_STRING_ADDRESS(
-	//	INPUT_WINDOW_TITLE,
-	//	windows_struct.className
-	//);
+	/*
+	SET_INPUT_UNICODE_STRING_ADDRESS(
+			INPUT_CLIENT_RECT,
+			d[i].clientRect
+		);
+	SET_INPUT_AS_LOGGED(INPUT_CLIENT_RECT);
+		
+	SET_INPUT_UNICODE_STRING_ADDRESS(
+		INPUT_WINDOW_TITLE,
+		windows_struct.className
+	);
+	SET_INPUT_AS_LOGGED(INPUT_WINDOW_TITLE);
 
-	//SET_INPUT_UNICODE_STRING_ADDRESS(
-	//	INPUT_PREV_WINDOW,
-	//	windows_struct.prevWindow
-	//);
+	SET_INPUT_ULL_VALUE(
+		INPUT_WINDOW_STYLE,
+		windows_struct.style
+	);
+	SET_INPUT_AS_LOGGED(INPUT_WINDOW_STYLE);
 
-	//SET_INPUT_UNICODE_STRING_ADDRESS(
-	//	INPUT_PARENT_WINDOW,
-	//	windows_struct.parentWindow
-	//);
+	SET_INPUT_ULL_VALUE(
+		INPUT_WINDOW_STYLE_EX,
+		windows_struct.style_ex
+	);
+	SET_INPUT_AS_LOGGED(INPUT_WINDOW_STYLE_EX);
 
-	//SET_INPUT_UNICODE_STRING_ADDRESS(
-	//	INPUT_SHELL_WINDOW,
-	//	windows_struct.shellWindow
-	//);
+	SET_INPUT_ULL_VALUE(
+		INPUT_WINDOW_MONITOR,
+		windows_struct.monitor
+	);
+	SET_INPUT_AS_LOGGED(INPUT_WINDOW_MONITOR);
 
-	//SET_INPUT_UNICODE_STRING_ADDRESS(
-	//	INPUT_DESKTOP_WINDOW,
-	//	windows_struct.desktopWindow
-	//);
+	SET_INPUT_ULL_VALUE(
+		INPUT_MONITOR_INFO,
+		windows_struct.monitorInfo
+	);
+	SET_INPUT_AS_LOGGED(INPUT_MONITOR_INFO);
 
-	//SET_INPUT_UNICODE_STRING_ADDRESS(
-	//	INPUT_FOREGROUND_WINDOW,
-	//	windows_struct.foregroundWindow
-	//);
-
-	//SET_INPUT_ULL_VALUE(
-	//	INPUT_IS_HUNG,
-	//	windows_struct.isHung
-	//);
-
-	//SET_INPUT_ULL_VALUE(
-	//	INPUT_IS_ZOOMED,
-	//	windows_struct.isZoomed
-	//);
-
-	//SET_INPUT_ULL_VALUE(
-	//	INPUT_IS_VISIBLE,
-	//	windows_struct.isVisible
-	//);
-
-	//SET_INPUT_ULL_VALUE(
-	//	INPUT_IS_MINIMIZED,
-	//	windows_struct.isMinimized
-	//);
-
-	//SET_INPUT_ULL_VALUE(
-	//	INPUT_IS_WINDOW_UNICODE,
-	//	windows_struct.isWindowUnicode
-	//);
-
-	//SET_INPUT_ULL_VALUE(
-	//	INPUT_WINDOW_RECT_LEFT,
-	//	windows_struct.windowRect.left
-	//);
-
-	//SET_INPUT_ULL_VALUE(
-	//	INPUT_WINDOW_RECT_RIGHT,
-	//	windows_struct.windowRect.right
-	//);
-
-	//SET_INPUT_ULL_VALUE(
-	//	INPUT_WINDOW_RECT_TOP,
-	//	windows_struct.windowRect.top
-	//);
-
-	//SET_INPUT_ULL_VALUE(
-	//	INPUT_WINDOW_RECT_BOTTOM,
-	//	windows_struct.windowRect.bottom
-	//);
-
-	//SET_INPUT_ULL_VALUE(
-	//	INPUT_CLIENT_WINDOW_RECT_LEFT,
-	//	windows_struct.clientRect.left
-	//);
-
-	//SET_INPUT_ULL_VALUE(
-	//	INPUT_CLIENT_WINDOW_RECT_RIGHT,
-	//	windows_struct.clientRect.right
-	//);
-
-	//SET_INPUT_ULL_VALUE(
-	//	INPUT_CLIENT_WINDOW_RECT_TOP,
-	//	windows_struct.clientRect.top
-	//);
-
-	//SET_INPUT_ULL_VALUE(
-	//	INPUT_CLIENT_WINDOW_RECT_BOTTOM,
-	//	windows_struct.clientRect.bottom
-	//);
-
-	//SET_INPUT_ULL_VALUE(
-	//	INPUT_WINDOW_STYLE,
-	//	windows_struct.style
-	//);
-
-	//SET_INPUT_ULL_VALUE(
-	//	INPUT_WINDOW_STYLE_EX,
-	//	windows_struct.style_ex
-	//);
-
-	//SET_INPUT_ULL_VALUE(
-	//	INPUT_WINDOW_MONITOR,
-	//	windows_struct.monitor
-	//);
-
-	//SET_INPUT_ULL_VALUE(
-	//	INPUT_MONITOR_INFO,
-	//	windows_struct.monitorInfo
-	//);
-
-	////-------------------------------------------------------------
-	//// Un-mask inputs.
-	////-------------------------------------------------------------
-	// 
-	//char* my_input_close_error_strings[] = {
-	//	MY_INPUT_CLOSE_ERROR_STRINGS
-	//};
-	//ERROR_MACROS_VARIABLES(p);
-
-	//static int f_masked = 1;
-	//static unsigned long long int calls_count = 0;
-	//if ((calls_count++ % 10) == 0) {
-	//	for (int i = 0; i < INPUT_COUNT; i++) {
-	//		SET_INPUT_AS_LOGGED(i); // unmask (each input)
-	//	}
-	//	f_masked = 0;
-	//	set_window_input_data(p); 
-	//}
-
-	//else {
-	//	if (f_masked == 0) {
-	//		for (int i = 0; i < INPUT_COUNT; i++) {
-	//			SET_INPUT_AS_NOT_LOGGED(i); // mask (each input)
-	//		} // for i (each input)
-	//		f_masked = 1;
-	//	}
-	//}
-	//printf("lower");
-
-	//-------------------------------------------------------------
-	// Log window data.
-	//-------------------------------------------------------------
+	SET_INPUT_UPDATE_TIME(
+		INPUT_IS_HUNG,
+		INPUT_TIME_SYSTEMTIME
+		SYSTEMTIME st = { 0 };
+	);
+	*/
 
 retry_log_window:
 	SET_DATA_READY;

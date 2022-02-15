@@ -37,60 +37,41 @@ extern "C" {
 // Defines.
 //-----------------------------------------------------------------------------
 #define STRING_BUFFERS_SIZE 1024
+#define RECT_BUFFERS_SIZE 32
 #define MAX_MPLEX_LOGGER_CHECKS 10
 #define MAX_WINDOWS 10
 #define WAIT_FOR_MULTIPLEX_LOGGER_TIME_IN_MS 1000
 #define LOGGER_MAX_LOG_TRIES 10
 #define LOG_RETRY_PAUSE_IN_MS 100
 #define INPUT_PAUSE_IN_MS 1000 // does not accept floating point
-#define INPUT_COUNT 21
-	#define INPUT_EXECUTABLE 0
-	#define INPUT_WINDOW_TITLE 1
-	#define INPUT_CURRENT_WINDOW 2
-	#define INPUT_NEXT_WINDOW 3
-	#define INPUT_PREV_WINDOW 4
-	#define INPUT_FOREGROUND_WINDOW 5
-	#define INPUT_SHELL_WINDOW 6
-	#define INPUT_DESKTOP_WINDOW 7
-	#define INPUT_IS_HUNG 8
-	#define INPUT_IS_ZOOMED 9
-	#define INPUT_IS_OCCULTED 10
-	#define INPUT_IS_VISIBLE 11
-	#define INPUT_IS_MINIMIZED 12
-	#define INPUT_IS_WINDOW_UNICODE 13
-	#define INPUT_WINDOW_RECT 14
-	#define INPUT_CLIENT_RECT 15
-	#define INPUT_WINDOW_PLACEMENT 16
-	#define INPUT_WINDOW_STYLE 17
-	#define INPUT_WINDOW_STYLE_EX 18
-	#define INPUT_WINDOW_MONITOR 19
-	#define INPUT_MONITOR_INFO 20
+
+#define INPUT_COUNT 10
+#define INPUT_CURR_WINDOW_EXECUTABLE 0
+#define INPUT_NEXT_WINDOW_EXECUTABLE 1
+#define INPUT_PREV_WINDOW_EXECUTABLE 2
+#define INPUT_FOREGROUND_WINDOW_EXECUTABLE 3
+#define INPUT_WINDOW_RECT 4
+#define INPUT_WINDOW_PLACEMENT 5
+#define INPUT_IS_VISIBLE 6
+#define INPUT_IS_MINIMIZED 7
+#define INPUT_IS_MAXIMIZED 8
+#define INPUT_IS_HUNG 9
 
 #define INPUT_NAME_STRING "DESKTOP-MAPPER"
 #define MY_INPUT_CLOSE_ERROR_STRINGS \
 	"Dynamic Error 1"
+
 #define INPUT_DESCRIPTION_STRINGS \
-	"Executable Name", \
-	"Current Window Title", \
-	"Current Window Handle", \
-	"Next Window Handle", \
-	"Previous Window Handle", \
-	"Foreground Window HandleHandle", \
-	"Shell Window Handle", \
-	"Desktop Window Handle", \
-	"Window is Hung", \
-	"Window is Zoomed", \
-	"Window is Visible", \
-	"Window is Occulted", \
-	"Window is Minimized", \
-	"Window is Unicode", \
-	"Window Rectangle", \
-	"Client Window Rectangle", \
-	"Window Style", \
-	"Window Style Ex", \
-	"Window Placement", \
-	"Window Monitor", \
-	"Window Monitor Info", \
+	"Current Window Executable Name", \
+	"Next Window Executable Name", \
+	"Previous Window Executable Name", \
+	"Foreground Window Executable Name", \
+	"Current Window Rectangle", \
+	"Current Window Placement", \
+	"Current Window is Visible", \
+	"Current Window is Minimized", \
+	"Current Window is Maximized", \
+	"Current Window is Hung"
 
 #define INPUT_TYPES \
 	STRING_COUNTER, \
@@ -99,17 +80,6 @@ extern "C" {
 	STRING_COUNTER, \
 	STRING_COUNTER, \
 	STRING_COUNTER, \
-	STRING_COUNTER, \
-	STRING_COUNTER, \
-	ULL_COUNTER, \
-	ULL_COUNTER, \
-	ULL_COUNTER, \
-	ULL_COUNTER, \
-	ULL_COUNTER, \
-	ULL_COUNTER, \
-	ULL_COUNTER, \
-	ULL_COUNTER, \
-	ULL_COUNTER, \
 	ULL_COUNTER, \
 	ULL_COUNTER, \
 	ULL_COUNTER, \
@@ -128,27 +98,24 @@ typedef struct {
 } windowinfo;
 
 typedef struct _windows_structure {
-	TCHAR executable[STRING_BUFFERS_SIZE]; //1024 bytes
-	TCHAR className[STRING_BUFFERS_SIZE];
-	HWND currentWindow;
-	HWND nextWindow;
-	HWND prevWindow;
-	HWND foregroundWindow;
-	HWND shellWindow;
-	HWND desktopWindow;
-	BOOL isOcculted;
+	HWND currentWindow; //1024*2 bytes;
+	TCHAR executable[STRING_BUFFERS_SIZE]; //1024*2 bytes
+	TCHAR nextWindow[STRING_BUFFERS_SIZE]; //1024*2 bytes;
+	TCHAR prevWindow[STRING_BUFFERS_SIZE]; //1024*2 bytes;
+	TCHAR foregroundWindow[STRING_BUFFERS_SIZE]; //1024*2 bytes;
 	BOOL isVisible;
 	BOOL isMinimized;
-	BOOL isHung;
 	BOOL isZoomed;
-	BOOL isWindowUnicode;
-	RECT windowRect;
-	RECT clientRect;
-	WINDOWPLACEMENT placement;
+	BOOL isHung;
+	TCHAR windowRect[RECT_BUFFERS_SIZE]; //32*2 bytes
+	TCHAR clientRect[RECT_BUFFERS_SIZE]; //32*2 bytes
+	TCHAR windowPlacement[RECT_BUFFERS_SIZE];
 	LONG_PTR style;
 	LONG_PTR style_ex;
 	HMONITOR monitor;
 	MONITORINFO monitorInfo;
+	INPUT_DWORD_PRIVATE_DATA index;
+	SYSTEMTIME time;
 } WINDOWS_STRUCTURE, * PWINDOWS_STRUCTURE;
 
 //-----------------------------------------------------------------------------
