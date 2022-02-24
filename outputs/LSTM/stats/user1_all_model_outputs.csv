@@ -1,0 +1,2 @@
+,frequency,look_back,num_nodes,batch_size,accuracy,balanced_accuracy,weighted_f1_score,weighted_precision,weighted_recall
+0,10min,3,8,6,0.801038062283737,0.6988702381886162,0.869481024462937,0.9595132525371959,0.801038062283737
