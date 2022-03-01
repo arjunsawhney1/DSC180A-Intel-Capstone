@@ -1,4 +1,4 @@
-,time,window
+,MEASUREMENT_TIME,VALUE
 0,2021-06-25 18:26:06.139,cmd.exe
 1,2021-06-25 18:26:15.138,explorer.exe
 2,2021-06-25 18:26:16.638,devenv.exe
