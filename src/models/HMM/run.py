@@ -1,5 +1,5 @@
 import pandas as pd
-from HMM_test import HMM
+from HMM import HMM
 
 xda = HMM()
 import os
@@ -8,7 +8,6 @@ import warnings
 warnings.filterwarnings("ignore")
 import plotly.graph_objects as go
 import numpy as np
-
 
 def hmm_predict(train_data, test_data):
     num_correct = 0
@@ -37,16 +36,17 @@ def test():
                    'User':['User1','User2','User1','User2','User1','User2']}
     print("End Pipeline:")
     return dict
+
 def plots():
     print("Start Plots:")
-    acc_df=test
+    acc_df=test()
     user_1=acc_df[acc_df['User']=='User1']
     user_2=acc_df[acc_df['User']=='User2']
     fig = go.Figure(data=[go.Bar(x=user_1['Prediction'], y=user_1['Accuracy'],
                                 marker_color='blue')])
     fig.update_layout(title='User1 Accuracy per Predictors',
                     xaxis_title='Predictors',
-                    yaxis_title='Accuracy') 
+                    yaxis_title='Accuracy')
     fig.write_image('outputs/HMM/plots/user1_accuracy.png')
     fig = go.Figure(data=[go.Bar(x=user_2['Prediction'], y=user_2['Accuracy'],
                                 marker_color='blue')])
@@ -62,4 +62,3 @@ def tables():
 
 tables()
 plots()
-
