@@ -35,4 +35,4 @@ RUN pip install --no-cache-dir keras==2.8.0
 RUN pip install --no-cache-dir sklearn
 
 # Override command to disable running jupyter notebook at launch
-# CMD ["/bin/bash"]
+CMD ["/bin/bash"]
