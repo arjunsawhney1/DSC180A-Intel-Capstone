@@ -5,7 +5,7 @@ Despite advancements in hardware technology, PC users continue to face frustrati
 Our solution is two-step. First, we built telemetry collector modules in C/C++ to collect real-world app usage data from two of our personal Windows 10 devices. Next, we developed neural network models, trained on the collected data, to predict app usage times and corresponding launch sequences in python. We achieved impressive results on selected evaluation metrics across different user profiles. 
 
 ## Usage
-Due to the nature of our problem statement, we have two distinct predictive tasks.
+Due to the nature of our project, we have two distinct predictive tasks.
 
 The project pipeline for our HMM model may be run as follows:
 ```
