@@ -3,7 +3,7 @@ name: Docker Workflow
 on:
   push:
     branches:
-    - main
+    # - main
     - master
     paths:
       - "requirements.txt"
