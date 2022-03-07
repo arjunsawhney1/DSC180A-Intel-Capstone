@@ -19,7 +19,6 @@ from time import time
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
-import tensorflow as tf
 from keras.preprocessing import sequence
 from keras.models import Sequential
 from keras.layers import Dense, LSTM, TimeDistributed
