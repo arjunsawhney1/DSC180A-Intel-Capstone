@@ -26,7 +26,13 @@ RUN apt-get -y install htop
 
 # RUN conda install -y scikit-learn
 
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir numpy==1.19.3
+RUN pip install --no-cache-dir pandas==1.1.2
+RUN pip install --no-cache-dir seaborn==0.11.0
+RUN pip install --no-cache-dir plotly==4.14.1
+RUN pip install --no-cache-dir datetime==4.4
+RUN pip install --no-cache-dir keras==2.8.0
+RUN pip install --no-cache-dir sklearn
 
 # Override command to disable running jupyter notebook at launch
 # CMD ["/bin/bash"]
