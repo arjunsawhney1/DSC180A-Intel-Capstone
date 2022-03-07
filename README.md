@@ -1,4 +1,4 @@
-# Intel Intelemetry: Data Collection & Time-Series Prediction of App Usage
+# Intel Telemetry: Data Collection & Time-Series Prediction of App Usage
 ## Abstract
 Despite advancements in hardware technology, PC users continue to face frustrating app launch times, especially on lower end Windows machines. The desktop experience differs vastly from the instantaneous app launches and optimized experience we have come to expect even from low end smartphones. We propose a solution to preemptively run Windows apps in the background based on the app usage patterns of the user. 
 
