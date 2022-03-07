@@ -8,7 +8,7 @@ on:
     paths:
       - "requirements.txt"
       - "Dockerfile"
-      - ".github/workflows/main.yml"
+      - ".github/workflows/docker.yml"
   workflow_dispatch:
 
 jobs:
