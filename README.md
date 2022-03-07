@@ -6,3 +6,6 @@ Our solution is two-step. First, we built telemetry collector modules in C/C++ t
 
 ## Visual Report
 Website: https://arjunsawhney1.github.io/intel-capstone-project/
+
+## Docker Image
+arjunsawhney1/intel-telemetry:latest
