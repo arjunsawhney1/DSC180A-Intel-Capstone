@@ -196,6 +196,7 @@ def evaluate_all_models():
     nodes = [16, 32, 64]
     batch_sizes = [6, 12, 24]
     for user in users:
+        print("Start Pipeline: {}".format(user))
         #number of models tested
         count = 1
         #outputs dictionary
@@ -206,9 +207,11 @@ def evaluate_all_models():
         df = pd.read_csv('data/{}_window_data.csv'.format(user))
         #clean user window data
         df = clean_data(df)
+        print("Data Cleaned")
         for freq in freqs:
             #regularize time-series by frequency
             df_regular = regularize_timeseries(df, freq)
+            print("Regularized at {} Intervals".format(freq))
             #split regular data into train and test for later time-series evaluation
             #60-20-20 split for train-validation-test
             df_train_regular, df_test_regular = train_test_split(df_regular, test_size=0.4, shuffle=False)
@@ -223,6 +226,7 @@ def evaluate_all_models():
             #60-20-20 split for train-validation-test
             df_train, df_test = train_test_split(df_encoded, test_size=0.4, shuffle=False)
             df_valid, df_test = train_test_split(df_test, test_size=0.5, shuffle=False)
+            print("Data Encoded & Split")
             for look_back in look_backs:
                 #specify different look_back values for sequence input and prediction length
                 #convert to supervised learning problem
@@ -241,6 +245,7 @@ def evaluate_all_models():
                                       loss='categorical_crossentropy',
                                       metrics='categorical_accuracy')
                         #optimal epochs selected based on epoch-loss curve
+                        print("Training {} Model {}".format(user, count))
                         start = time()
                         history = model.fit(X_train, y_train,
                                   epochs=10,
@@ -284,7 +289,6 @@ def evaluate_all_models():
                         count+=1
 
         pd.DataFrame(outputs).to_csv("outputs/LSTM/tables/{}_model_outputs.csv".format(user))
-
 
 # In[10]:
 
