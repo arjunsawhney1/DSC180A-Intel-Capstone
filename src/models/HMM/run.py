@@ -39,7 +39,7 @@ def test():
 
 def plots():
     print("Start Plots:")
-    acc_df=test()
+    acc_df=pd.DataFrame(test())
     user_1=acc_df[acc_df['User']=='User1']
     user_2=acc_df[acc_df['User']=='User2']
     fig = go.Figure(data=[go.Bar(x=user_1['Prediction'], y=user_1['Accuracy'],
