@@ -26,19 +26,19 @@
 						</div>
 						<div class="content">
 							<div class="inner">
-								<h1>DSC 180 Capstone: Intel Telemetry</h1>
-								<h2> Team Members: Arjun Sawhney | Srikar Prayaga | Andrew Chin</h2>
-								<p> Despite advancements in hardware technology, PC users continue to face frustrating app launch times, especially on lower end Windows machines. The desktop experience differs vastly from the instantaneous app launches and optimized experience we have come to expect even from low end smartphones. <br>
+								<h1 style="color: rgba(255, 255, 255, 0.89);"> DSC 180 Capstone: Intel Telemetry</h1>
+								<h2 style="color: rgba(255, 255, 255, 0.89);"> Team Members: Arjun Sawhney | Srikar Prayaga | Andrew Chin</h2>
+								<p  style="color: rgba(255, 255, 255, 0.89);">Despite advancements in hardware technology, PC users continue to face frustrating app launch times, especially on lower end Windows machines. The desktop experience differs vastly from the instantaneous app launches and optimized experience we have come to expect even from low end smartphones. <br>
 									We propose a solution to preemptively run Windows apps in the background based on the app usage patterns of the user. Our solution is two-step. First, we built telemetry collector modules to collect real-world app usage data from two of our personal Windows 10 devices. Next, we developed neural network models, trained on the collected data, to predict app usage times and corresponding launch sequences. We achieved impressive results on selected evaluation metrics across different user profiles. 
 								</p>
 							</div>
 						</div>
 						<nav>
 							<ul>
-								<li><a href="#intro">Data Collection</a></li>
-								<li><a href="#work">EDA</a></li>
-								<li><a href="#about">Prediction</a></li>
-								<li><a href="#contact">Conclusion</a></li>
+								<li><a style="color: rgba(255, 255, 255, 0.89);" href="#intro">Data Collection</a></li>
+								<li><a style="color: rgba(255, 255, 255, 0.89);" href="#work">EDA</a></li>
+								<li><a style="color: rgba(255, 255, 255, 0.89);" href="#about">Prediction</a></li>
+								<li><a style="color: rgba(255, 255, 255, 0.89);" href="#contact">Conclusion</a></li>
 								<!--<li><a href="#elements">Elements</a></li>-->
 							</ul>
 						</nav>
@@ -49,7 +49,7 @@
 
 						<!-- Intro -->
 							<article id="intro">
-								<h2 class="major">Data Collection</h2>
+								<h2 class="major" > Data Collection</h2>
 								
 								<h1>Data Collection Overview </h1>
 								<p>
@@ -68,12 +68,13 @@
 									The mouse_input.IL project served as a predicate to the other input libraries. This task was designed to help us familiarize ourselves with the Windows development environment and accompanying configurations. As such, we incorporated Intel provided code into the static_standard_library sample template. The goal of this IL is to store and predict mouse movement data. Every 100 ms, we track the x and y position in pixel(s) of the mouse cursor and apply a 1D Kalman predictor to expose the inputs. We track the mouse noise in both the x and y positions as well as the Kalman predicted value in both dimensions. The following tables are the outputs of the mouse_input.IL:
 								</p>
 
-								<span class="center"><img src="images/mouse_input.png" alt="" width="50%"/></span>
+								<span class="center"><img src="images/mouse_input.png" alt="" width="50% "/></span>
 								<style>
 									img {
 									  display: block;
 									  margin-left: auto;
 									  margin-right: auto;
+									 
 									}
 									</style>
 
