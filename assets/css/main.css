@@ -138,6 +138,13 @@ input, select, textarea {
 			}
 
 		}
+		@media screen and (max-width: 480px) {
+
+			html {
+				font-size: 9pt;
+			}
+
+		}
 
 	body, input, select, textarea {
 		color: #ffffff;
