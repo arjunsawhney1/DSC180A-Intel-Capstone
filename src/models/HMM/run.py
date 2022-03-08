@@ -58,7 +58,7 @@ def plots():
 
 def tables():
     results = pd.DataFrame(test())
-    results.to_csv('outputs/HMM/tables/results.csv')
+    results.to_csv('outputs/HMM/tables/accuracies.csv')
 
 tables()
 plots()
