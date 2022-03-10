@@ -12,7 +12,8 @@ import json
 
 # read in json file with user data
 def get_params():
-    users=json.loads('config/hyperparameters.json')['users']
+    users=json.loads('config/hyperparameters.json')
+    use_case=users['users']
     
 
 def hmm_predict(train_data, test_data):
