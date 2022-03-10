@@ -23,6 +23,8 @@ cd intel-capstone-project/src/models/LSTM
 python run.py
 ```
 
+Outputs for both models can be located in the outputs folder.
+
 ## Project Website
 https://arjunsawhney1.github.io/intel-capstone-project/
 
