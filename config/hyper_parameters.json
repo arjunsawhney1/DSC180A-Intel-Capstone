@@ -1,6 +1,6 @@
 {
   "users": ["user1", "user2", "intel"],
-  "intervals": ["10s", "30s", "1min"],
+  "intervals": ["1min", "30s", "1s"],
   "look_backs": [3, 6, 12],
   "nodes": [16, 32, 64],
   "batch_sizes": [6, 12, 24]
