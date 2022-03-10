@@ -43,7 +43,7 @@ def clean_data(df, user):
     # rename remaining columns
     df.columns = ['time', 'window', 'diff']
     # Select 3-week time-frame
-    if user !- 'intel':
+    if user != 'intel':
         df = df[(df['time'] >= '2022-01-03') & (df['time'] <= '2022-01-24')]
     # Remove windows appearing only once
     df = df.groupby('window').filter(lambda x: len(x) > 1)
