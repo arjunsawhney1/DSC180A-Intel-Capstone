@@ -31,8 +31,8 @@ RUN pip install --no-cache-dir pandas
 RUN pip install --no-cache-dir seaborn
 RUN pip install --no-cache-dir plotly
 RUN pip install --no-cache-dir datetime
-RUN pip install --no-cache-dir keras==2.8.0
 RUN pip install --no-cache-dir sklearn
+RUN pip install --no-cache-dir keras==2.8.0
 
 # Override command to disable running jupyter notebook at launch
 CMD ["/bin/bash"]

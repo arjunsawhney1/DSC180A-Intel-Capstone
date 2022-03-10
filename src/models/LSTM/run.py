@@ -14,6 +14,7 @@ warnings.filterwarnings("ignore")
 import pandas as pd
 import numpy as np
 import datetime
+import json
 from time import time
 
 from sklearn.model_selection import train_test_split
@@ -32,7 +33,7 @@ import plotly.graph_objects as go
 # In[2]:
 
 
-def clean_data(df):
+def clean_data(df, user):
     # convert to datetime
     df['MEASUREMENT_TIME'] = pd.to_datetime(df['MEASUREMENT_TIME'], errors='coerce')
     # calculate time difference
@@ -42,7 +43,8 @@ def clean_data(df):
     # rename remaining columns
     df.columns = ['time', 'window', 'diff']
     # Select 3-week time-frame
-#     df = df[(df['time'] >= '2022-01-03') & (df['time'] <= '2022-01-24')]
+    if user !- 'intel':
+        df = df[(df['time'] >= '2022-01-03') & (df['time'] <= '2022-01-24')]
     # Remove windows appearing only once
     df = df.groupby('window').filter(lambda x: len(x) > 1)
     # Remove NaNs
@@ -180,20 +182,21 @@ def make_time_series_plot(df_train, df_valid, df_test, df_pred, freq, mode='mark
     return go.Figure(data=[trace1, trace2, trace3, trace4], layout=layout)
 
 
+def get_params():
+    #list users
+    params = json.loads('config/hyper_parameters.json')
+
+    return params['users'], params['intervals'], params['look_backs'], params['nodes'], params['batch_sizes']
+
 # # LSTM Model
 
 # In[9]:
 
 
 def evaluate_all_models():
-    #list users
-    users = ['user1', 'user2', 'intel']
-    #regularization frequencies
-    freqs = ['10s', '30s', '1min']
     #hyper-parameters
-    look_backs = [3, 6, 12]
-    nodes = [16, 32, 64]
-    batch_sizes = [6, 12, 24]
+    users, intervals, look_backs, nodes, batch_sizes = get_params()
+
     for user in users:
         print("Start Pipeline: {}".format(user))
         #number of models tested
@@ -205,9 +208,9 @@ def evaluate_all_models():
         #load data for user
         df = pd.read_csv('data/{}_window_data.csv'.format(user))
         #clean user window data
-        df = clean_data(df)
+        df = clean_data(df, user)
         print("Data Cleaned")
-        for freq in freqs:
+        for freq in intervals:
             #regularize time-series by frequency
             df_regular = regularize_timeseries(df, freq)
             print("Regularized at {} Intervals".format(freq))
