@@ -6,11 +6,11 @@
 
 # data science notebook
 # https://hub.docker.com/repository/docker/ucsdets/datascience-notebook/tags
-ARG BASE_CONTAINER=ucsdets/datascience-notebook:2021.2-stable
+# ARG BASE_CONTAINER=ucsdets/datascience-notebook:2021.2-stable
 
 # scipy/machine learning (tensorflow, pytorch)
 # https://hub.docker.com/repository/docker/ucsdets/scipy-ml-notebook/tags
-# ARG BASE_CONTAINER=ucsdets/scipy-ml-notebook:2021.3-42158c8
+ARG BASE_CONTAINER=ucsdets/scipy-ml-notebook:2021.3-42158c8
 
 FROM $BASE_CONTAINER
 
@@ -34,6 +34,7 @@ RUN pip install --no-cache-dir kaleido
 RUN pip install --no-cache-dir datetime
 RUN pip install --no-cache-dir sklearn
 RUN pip install --no-cache-dir keras==2.8.0
+RUN pip install --no-cache-dir tensorflow==2.5.0
 
 # Override command to disable running jupyter notebook at launch
 CMD ["/bin/bash"]
