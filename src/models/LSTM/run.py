@@ -8,22 +8,23 @@
 
 import os
 os.chdir('../../..')
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import warnings
 warnings.filterwarnings("ignore")
+import json
 
 import pandas as pd
 import numpy as np
-import datetime
-import json
 from time import time
+import datetime
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
-
-from keras.preprocessing import sequence
-from keras.models import Sequential
-from keras.layers import Dense, LSTM, TimeDistributed
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score, precision_score, recall_score
+
+from tensorflow.keras.preprocessing import sequence
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, LSTM, TimeDistributed
 
 import plotly.graph_objects as go
 
