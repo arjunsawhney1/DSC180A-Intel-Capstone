@@ -9,7 +9,7 @@ Due to the nature of our project, we have two distinct predictive tasks.
 
 The project pipeline for our HMM model may be run as follows:
 ```
-launch-scipy-ml.sh
+launch-scipy-ml.sh -i arjunsawhney1/intel-telemetry
 git clone git@github.com:arjunsawhney1/intel-capstone-project.git
 cd intel-capstone-project/src/models/HMM
 python run.py
@@ -17,11 +17,13 @@ python run.py
 
 The project pipeline for our LSTM model may be run as follows:
 ```
-launch-scipy-ml.sh
+launch-scipy-ml.sh -i arjunsawhney1/intel-telemetry
 git clone git@github.com:arjunsawhney1/intel-capstone-project.git
 cd intel-capstone-project/src/models/LSTM
 python run.py
 ```
+
+Outputs for both models can be located in the outputs folder.
 
 ## Project Website
 https://arjunsawhney1.github.io/intel-capstone-project/
