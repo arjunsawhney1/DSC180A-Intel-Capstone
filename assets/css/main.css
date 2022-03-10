@@ -1565,7 +1565,7 @@ input, select, textarea {
 			max-width: 100%;
 			background-color: rgb(255, 255, 255);
 			border-radius: 4px;
-			opacity: 0;
+			opacity: 10;
 		}
 
 			#main article.active {
@@ -1578,7 +1578,7 @@ input, select, textarea {
 
 			#main article .close {
 				display: block;
-				position: absolute;
+				position: fixed;
 				top: 0;
 				right: 0;
 				width: 4rem;
@@ -1609,11 +1609,11 @@ input, select, textarea {
 				}
 
 				#main article .close:hover:before {
-					background-color: rgba(255, 255, 255, 0.075);
+					background-color: rgba(0, 0, 0, 0.075);
 				}
 
 				#main article .close:active:before {
-					background-color: rgba(255, 255, 255, 0.175);
+					background-color: rgba(0, 0, 0, 0.175);
 				}
 
 		@media screen and (max-width: 736px) {
