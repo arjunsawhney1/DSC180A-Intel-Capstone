@@ -11,7 +11,8 @@ import numpy as np
 import json
 
 # read in json file with user data
-users=json.loads('config/users.json')
+def get_params():
+    users=json.loads('config/users.json')
 
 def hmm_predict(train_data, test_data):
     num_correct = 0
