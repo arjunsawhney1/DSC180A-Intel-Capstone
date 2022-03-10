@@ -184,7 +184,10 @@ def make_time_series_plot(df_train, df_valid, df_test, df_pred, freq, mode='mark
 
 def get_params():
     #list users
-    params = json.loads('config/hyper_parameters.json')
+    json_file_path = "config/hyper_parameters.json"
+
+    with open(json_file_path, 'r') as j:
+         params = json.loads(j.read())
 
     return params['users'], params['intervals'], params['look_backs'], params['nodes'], params['batch_sizes']
 
