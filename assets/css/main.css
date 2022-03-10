@@ -1578,7 +1578,7 @@ input, select, textarea {
 
 			#main article .close {
 				display: block;
-				position: fixed;
+				position: absolute;
 				top: 0;
 				right: 0;
 				width: 4rem;
